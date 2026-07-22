@@ -22,7 +22,7 @@ void StaffManager::reload() {
 void StaffManager::loadAll() {
     staffList.clear();
 
-    QFile file("staff_database.csv");
+    QFile file("database/staff_database.csv");
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         // Fallback: try the embedded resource (read-only, used as seed)
         QFile res(":/database/staff_database.csv");
@@ -66,7 +66,7 @@ void StaffManager::_parseStream(QTextStream &in) {
 }
 
 void StaffManager::saveAll() {
-    QFile file("staff_database.csv");
+    QFile file("database/staff_database.csv");
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qDebug() << "StaffManager: Cannot open staff_database.csv for writing.";
         return;

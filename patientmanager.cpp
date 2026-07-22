@@ -21,7 +21,7 @@ void PatientManager::reload() {
 void PatientManager::loadAll() {
     patientList.clear();
 
-    QFile file("patient_database.csv");
+    QFile file("database/patient_database.csv");
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         // Fallback: try the embedded resource (read-only, used as seed)
         QFile res(":/database/patient_database.csv");
@@ -64,7 +64,7 @@ void PatientManager::_parseStream(QTextStream &in) {
 
 // Rewrites the entire CSV from the in-memory vector (used after any mutation)
 void PatientManager::saveAll() {
-    QFile file("patient_database.csv");
+    QFile file("database/patient_database.csv");
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qDebug() << "PatientManager: Cannot open patient_database.csv for writing.";
         return;
@@ -89,7 +89,7 @@ void PatientManager::saveAll() {
 void PatientManager::addPatient(const Patient &newPatient) {
     patientList.append(newPatient);
 
-    QFile file("patient_database.csv");
+    QFile file("database/patient_database.csv");
     if (file.open(QIODevice::Append | QIODevice::Text)) {
         QTextStream out(&file);
         out << newPatient.id << ","
@@ -182,6 +182,16 @@ QVector<Patient> PatientManager::getAllPatients() const {
 
 int PatientManager::getTotalCount() const {
     return patientList.size();
+}
+
+void PatientManager::setStatus(const QString &patientId, const QString &newStatus) {
+    for (auto &p : patientList) {
+        if (p.id == patientId) {
+            p.status = newStatus;
+            saveAll();
+            return;
+        }
+    }
 }
 
 // Generates the next sequential, collision-free Patient ID (PT-0001, PT-0002, ...)

@@ -35,6 +35,8 @@ public:
 
     void reload();
 
+    void setStatus(const QString &patientId, const QString &newStatus);
+
 private:
     QVector<Patient> patientList;
     void saveAll(); // rewrites patient_database.csv from patientList

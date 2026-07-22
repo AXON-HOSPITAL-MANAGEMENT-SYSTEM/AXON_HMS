@@ -1,4 +1,4 @@
 # username,password,Role,staff_id,full_name,age,gender,phone,status
 admin,admin,Admin,STF_001,ADMIN,19,Male,9700000000,On Duty
-doctor,doctor,Doctor,STF_002,hari thapa,46,Male,9801029202,On Duty
+doctor,doctor,Doctor,STF_002,Hari Thapa,46,Male,9801029202,On Duty
 r,r,Receptionist,STF_003,sita shr,27,Female,9822222222,On Duty
