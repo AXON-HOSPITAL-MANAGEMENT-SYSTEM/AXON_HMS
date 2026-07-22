@@ -9,6 +9,7 @@
         <file>adminimg.png</file>
         <file>axonimg.png</file>
         <file>doctor.jpg</file>
+        <file>receptionistimg.png</file>
     </qresource>
     <qresource prefix="/database">
         <file>staff_database.csv</file>
@@ -16,4 +17,5 @@
         <file>appointment_database.csv</file>
         <file>billing_database.csv</file>
     </qresource>
+    <qresource prefix="/"/>
 </RCC>
