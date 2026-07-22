@@ -3,14 +3,15 @@
 
 #include <QString>
 
-
 struct Patient {
     QString id;
     QString name;
     QString age;
     QString gender;
-    QString diagnosisTreatment;
-    QString assignedDoctor;
+    QString contact;
+    QString bloodGroup;
+    QString diagnosisTreatment; // Used for "Reason for Visit"
+    QString assignedDoctor;     // Used for "Assigned Doctor"
     QString status;
     QString bedNumber;
 };

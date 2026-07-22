@@ -2,84 +2,104 @@
 #define RECEPTIONISTWINDOW_H
 
 #include <QWidget>
+#include <QLineEdit>
+#include <QComboBox>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QDateEdit>
+#include <QTimeEdit>
+#include <QTableWidget>
 #include <QTimer>
-#include <QDateTime>
-#include <QFile>
-#include <QTextStream>
-#include <QMessageBox>
+#include <QPushButton>
+
 #include "patientmanager.h"
 #include "staffmanager.h"
-#include "appointmentmanager.h"
 #include "billingmanager.h"
 
-QT_BEGIN_NAMESPACE
-namespace Ui { class ReceptionistWindow; }
-QT_END_NAMESPACE
+namespace Ui {
+class ReceptionistWindow;
+}
 
 class ReceptionistWindow : public QWidget
 {
     Q_OBJECT
 
 public:
-    ReceptionistWindow(QWidget *parent = nullptr);
+    explicit ReceptionistWindow(QWidget *parent = nullptr);
     ~ReceptionistWindow();
 
 private slots:
-    // Sidebar Navigation Buttons
     void onDashboardClicked();
     void onRegisterPatientClicked();
     void onScheduleClicked();
     void onBillingClicked();
+    void onMenuClicked();
 
-    // Action Buttons
-    void onViewAllAppointmentsClicked();
-    void onClearFormClicked();
-    void onSubmitRegistrationClicked();
+    // Patient Form Handlers
+    void onSavePatientClicked();
+    void onClearPatientFormClicked();
+
+    // Schedule Handlers
+    void onBookAppointmentClicked();
+    void onClearScheduleFormClicked();
+
+    // Billing Handlers
+    void onCreateInvoiceClicked();
+    void onClearBillingFormClicked();
+
     void updateDateTime();
-    void onBookAppointmentClicked(); // Handles click event
-
-    // Billing page
-    void onBillingSearchClicked();
-    void onGenerateBillClicked();
-    void onProcessPaymentClicked();
-    void recomputeBillTotals(); // re-sums Subtotal/Remaining Balance whenever a table cell or the Discount field changes
-    void onAddBillingRowClicked();    // inserts a new, fully-editable custom line item
-    void onRemoveBillingRowClicked();
-    void on_btnGenerateBill_clicked();    // deletes the currently-selected line item row
 
 private:
     Ui::ReceptionistWindow *ui;
 
-    // Shared backend — same CSV files Admin & Doctor windows use
-    PatientManager     *patientMgr;
-    StaffManager       *staffMgr;
-    AppointmentManager *apptMgr;
-    BillingManager      *billingMgr;
+    // Backend Managers
+    PatientManager *patientMgr{nullptr};
+    StaffManager   *staffMgr{nullptr};
+    BillingManager *billingMgr{nullptr};
 
-    // Helper functions to keep code clean
+    // UI Controls: Register Patient
+    QLineEdit   *txtPatientName{nullptr};
+    QSpinBox    *spnPatientAge{nullptr};
+    QComboBox   *cmbPatientGender{nullptr};
+    QLineEdit   *txtPatientContact{nullptr};
+    QComboBox   *cmbBloodGroup{nullptr};
+    QLineEdit   *txtReasonForVisit{nullptr};
+    QComboBox   *cmbAssignedDoctor{nullptr};
+
+    // UI Controls: Schedule Page
+    QComboBox   *cmbSchedPatient{nullptr};
+    QComboBox   *cmbSchedDoctor{nullptr};
+    QDateEdit   *dtSchedDate{nullptr};
+    QTimeEdit   *tmSchedTime{nullptr};
+    QLineEdit   *txtSchedReason{nullptr};
+    QTableWidget *scheduleTable{nullptr};
+
+    // UI Controls: Billing Page
+    QComboBox      *cmbBillPatient{nullptr};
+    QComboBox      *cmbBillType{nullptr};
+    QDoubleSpinBox *spnBillAmount{nullptr};
+    QComboBox      *cmbBillStatus{nullptr};
+    QTableWidget   *billingTable{nullptr};
+
+    // Dashboard UI
+    QTableWidget *queueTable{nullptr};
+    QTimer       *dateTimeTimer{nullptr};
+
+    // Initialization & Setup Helpers
+    void setupCardStyles();
+    void setupDashboardBottomArea();
+    void setupRegisterPatientPage();
+    void setupSchedulePage();
+    void setupBillingPage();
     void setupConnections();
-    void refreshDashboardData();
-    void populateAppointmentsTable();
-    void populateRecentPatientsTable();
 
-    void populateDoctorDropdowns();     // fills doctorbox / doctorComboBox from StaffManager
-    void refreshScheduleTable();        // fills the Scheduling page's tableWidget from AppointmentManager
-    void refreshRegisteredPatientsList();// fills listRecentPatientsReg from PatientManager
-    void addPatientListItem(const Patient &p); // builds one custom list row widget
-
-    // Billing page helpers
-    QString currentBillingPatientId;   // patient currently loaded on the Billing page
-    QString currentBillId;             // bill currently displayed in Current Bill Summary (may be empty)
-    bool    m_updatingBillTable = false; // re-entrancy guard for recomputeBillTotals()
-
-    void populateBillingPatientCard(const Patient &p);
-    void clearBillingPatientCard();
-    void populateBillingServiceTemplate();               // resets the table to the fixed service rows + Subtotal/Deposit/Remaining
-    void loadBillIntoTable(const BillingRecord &bill);    // fills a previously-generated bill's amounts into the template
-    void insertCustomBillingRow(const QString &code, const QString &desc, double amount); // adds a fully-editable line item just above the summary rows
-    QString selectedPaymentMode() const; // reads the checked Payment Mode radio button
-
-    QTimer *dateTimeTimer;
+    // Refresh & Helper Functions
+    void refreshDashboardStats();
+    void refreshScheduleTable();
+    void refreshBillingTable();
+    void populatePatientDropdowns();
+    void updateSidebarSelection(QPushButton *activeBtn);
+    void openEditPatientDialog(const QString &patientId);
 };
 
 #endif // RECEPTIONISTWINDOW_H

@@ -126,6 +126,23 @@ Patient PatientManager::searchPatient(const QString &patientId) {
     return Patient(); // Returns empty struct if not found
 }
 
+// +getPatientById() -> Identical helper method for lookup
+Patient PatientManager::getPatientById(const QString &patientId) {
+    return searchPatient(patientId);
+}
+
+// +updatePatient() -> Finds patient by ID, updates fields, and persists changes
+void PatientManager::updatePatient(const Patient &updatedPatient) {
+    for (int i = 0; i < patientList.size(); ++i) {
+        if (patientList[i].id == updatedPatient.id) {
+            patientList[i] = updatedPatient;
+            saveAll();
+            return;
+        }
+    }
+    qDebug() << "PatientManager: Patient" << updatedPatient.id << "not found for update.";
+}
+
 // +diagnose() -> Updates diagnosis field and persists
 void PatientManager::diagnose(const QString &patientId, const QString &diagnosis) {
     for (auto &p : patientList) {
@@ -183,14 +200,12 @@ QString PatientManager::generateNextId() const {
     return candidate;
 }
 
-
-
 QDialog *createEditPatientDialog(const QString &id, const QString &name, const QString &gender,
-                                  const QString &problem, const QString &doctor, const QString &status,
-                                  QWidget *parent,
-                                  QLineEdit *&outNameEdit, QComboBox *&outGenderBox,
-                                  QLineEdit *&outProblemEdit, QLineEdit *&outDoctorEdit,
-                                  QComboBox *&outStatusBox)
+                                 const QString &problem, const QString &doctor, const QString &status,
+                                 QWidget *parent,
+                                 QLineEdit *&outNameEdit, QComboBox *&outGenderBox,
+                                 QLineEdit *&outProblemEdit, QLineEdit *&outDoctorEdit,
+                                 QComboBox *&outStatusBox)
 {
     QDialog *dlg = new QDialog(parent);
     dlg->setWindowTitle("Modify Patient Record — " + id);
@@ -202,7 +217,7 @@ QDialog *createEditPatientDialog(const QString &id, const QString &name, const Q
         "  background: #f8fafc; color: #0f172a; }"
         "QLineEdit:focus, QComboBox:focus { border: 1px solid #6366f1; background: #ffffff; }"
         "QPushButton { padding: 6px 14px; font-weight: bold; border-radius: 6px; font-size: 12px; }"
-    );
+        );
 
     QFormLayout *form = new QFormLayout(dlg);
     form->setContentsMargins(24, 24, 24, 24);
@@ -220,7 +235,7 @@ QDialog *createEditPatientDialog(const QString &id, const QString &name, const Q
 
     form->addRow("Patient Name:",       nameEdit);
     form->addRow("Gender:",             genderBox);
-    form->addRow("Diagnosis/Problem:",  problemEdit);
+    form->addRow("Diagnosis/Problem:", problemEdit);
     form->addRow("Assigned Doctor:",    doctorEdit);
     form->addRow("Status:",             statusBox);
 
