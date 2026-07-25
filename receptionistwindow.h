@@ -14,6 +14,7 @@
 #include <QButtonGroup>
 #include <QTextEdit>
 #include <QLabel>
+#include <QStackedWidget>
 #include "patientmanager.h"
 #include "staffmanager.h"
 #include "billingmanager.h"
@@ -41,7 +42,8 @@ private slots:
     void onClearScheduleFormClicked();
     // Billing Handlers
     void onSearchBillingPatientClicked();   // NEW: looks up patient + loads their open bill
-    void onPaymentModeChanged();            // NEW: enables/disables insurance fields
+    void onPaymentModeChanged();            // NEW: switches the stacked widget page
+    void updateChangeDue();                 // NEW: recomputes Change Due on the Cash page
     void onGenerateBillClicked();           // NEW: replaces onCreateInvoiceClicked()
     void onProcessPaymentClicked();         // NEW: collects payment on the loaded bill
     void onClearBillingFormClicked();
@@ -85,13 +87,31 @@ private:
     QButtonGroup  *paymentModeGroup{nullptr};
     QDoubleSpinBox *spnAmountToPay{nullptr};
     QDoubleSpinBox *spnDiscount{nullptr};
+    QTextEdit      *txtBillNotes{nullptr};
+    QPushButton    *btnGenerateBill{nullptr};
+    QPushButton    *btnProcessPayment{nullptr};
+    // UI Controls: Billing Page — Payment Details — mode-specific stacked pages
+    QStackedWidget *stackedPaymentDetails{nullptr};
+    // Cash page
+    QWidget        *pageCash{nullptr};
+    QDoubleSpinBox *spnCashReceived{nullptr};
+    QLabel         *lblChangeDue{nullptr};
+    // Card page
+    QWidget     *pageCard{nullptr};
+    QComboBox   *cmbCardType{nullptr};
+    QLineEdit   *txtCardLast4{nullptr};
+    QLineEdit   *txtCardAuthCode{nullptr};
+    // Online page
+    QWidget     *pageOnline{nullptr};
+    QComboBox   *cmbOnlineMethod{nullptr};
+    QLineEdit   *txtOnlineTxnId{nullptr};
+    QLineEdit   *txtOnlinePayerRef{nullptr};
+    // Insurance page
+    QWidget        *pageInsurance{nullptr};
     QComboBox      *cmbInsuranceProvider{nullptr};
     QLineEdit      *txtPolicyMemberId{nullptr};
     QLineEdit      *txtPreAuthCode{nullptr};
     QDoubleSpinBox *spnCoveredAmount{nullptr};
-    QTextEdit      *txtBillNotes{nullptr};
-    QPushButton    *btnGenerateBill{nullptr};
-    QPushButton    *btnProcessPayment{nullptr};
     // Tracks which patient/bill the billing page is currently working with
     QString currentLookupPatientId;
     QString currentGeneratedBillId;
@@ -113,4 +133,4 @@ private:
     void updateSidebarSelection(QPushButton *activeBtn);
     void openEditPatientDialog(const QString &patientId);
 };
-#endif // REC
+#endif // RECEPTIONISTWINDOW_H
