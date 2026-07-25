@@ -1005,13 +1005,13 @@ void ReceptionistWindow::setupBillingPage()
     lblOnlineTxn->setStyleSheet(fieldLabelStyle);
 
     cmbOnlineMethod = new QComboBox(pageOnline);
-    cmbOnlineMethod->addItems({"UPI", "Mobile Wallet", "Net Banking", "Other"});
+    cmbOnlineMethod->addItems({"eSewa", "Khalti", "Online Banking", "Other"});
     cmbOnlineMethod->setStyleSheet(inputStyle);
 
     txtOnlineTxnId = new QLineEdit(pageOnline);
     txtOnlineTxnId->setStyleSheet(inputStyle);
 
-    QLabel *lblOnlineRef = new QLabel("Payer Reference (UPI ID / Wallet No.)", pageOnline);
+    QLabel *lblOnlineRef = new QLabel("Payer Reference (eSewa ID / Wallet No.)", pageOnline);
     lblOnlineRef->setStyleSheet(fieldLabelStyle);
     txtOnlinePayerRef = new QLineEdit(pageOnline);
     txtOnlinePayerRef->setStyleSheet(inputStyle);
