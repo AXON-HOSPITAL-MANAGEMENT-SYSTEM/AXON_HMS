@@ -19,10 +19,14 @@ void StaffManager::reload() {
     loadAll();
 }
 
+// FIX: was reading "database/staff_database.csv" while MainWindow's login
+// screen read plain "staff_database.csv" — two different files, so anything
+// Admin added/edited here was invisible at login. Now uses the same
+// root-level path everywhere (also matches PatientManager's fix).
 void StaffManager::loadAll() {
     staffList.clear();
 
-    QFile file("database/staff_database.csv");
+    QFile file("staff_database.csv");
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         // Fallback: try the embedded resource (read-only, used as seed)
         QFile res(":/database/staff_database.csv");
@@ -66,7 +70,7 @@ void StaffManager::_parseStream(QTextStream &in) {
 }
 
 void StaffManager::saveAll() {
-    QFile file("database/staff_database.csv");
+    QFile file("staff_database.csv");
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qDebug() << "StaffManager: Cannot open staff_database.csv for writing.";
         return;

@@ -671,7 +671,7 @@ font: 600 11pt &quot;Segoe UI Semibold&quot;;</string>
                <item>
                 <widget class="QLabel" name="lblValueRevenue">
                  <property name="text">
-                  <string>Rs. 1,42,500</string>
+                  <string>Rs. 0.00</string>
                  </property>
                 </widget>
                </item>

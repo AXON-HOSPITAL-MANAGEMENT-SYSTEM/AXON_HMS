@@ -18,10 +18,14 @@ void PatientManager::reload() {
 }
 
 // Loads all patient records from the CSV database into memory
+// FIX: was reading "database/patient_database.csv" — a subfolder no other
+// part of the app used, so Admin/Doctor/Receptionist all ended up creating
+// and reading DIFFERENT files depending on the working directory. Now reads
+// the same root-level file everywhere.
 void PatientManager::loadAll() {
     patientList.clear();
 
-    QFile file("database/patient_database.csv");
+    QFile file("patient_database.csv");
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         // Fallback: try the embedded resource (read-only, used as seed)
         QFile res(":/database/patient_database.csv");
@@ -41,13 +45,35 @@ void PatientManager::loadAll() {
     file.close();
 }
 
+// FIX: contact and bloodGroup were declared on the Patient struct and
+// captured by the Receptionist's registration form, but this parser only
+// ever read 8 fields, so both values were silently discarded on every
+// save/reload cycle. Now supports the full 10-column schema:
+//   id,name,age,gender,contact,blood_group,diagnosis,doctor,status,bed
+// Legacy 8-column rows (from before this fix) still load fine — contact and
+// bloodGroup just come back empty for those rows.
 void PatientManager::_parseStream(QTextStream &in) {
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
         if (line.isEmpty() || line.startsWith("#")) continue;
 
         QStringList fields = line.split(",");
-        if (fields.size() >= 8) {
+
+        if (fields.size() >= 10) {
+            Patient p;
+            p.id                 = fields[0].trimmed();
+            p.name               = fields[1].trimmed();
+            p.age                = fields[2].trimmed();
+            p.gender             = fields[3].trimmed();
+            p.contact            = fields[4].trimmed();
+            p.bloodGroup         = fields[5].trimmed();
+            p.diagnosisTreatment = fields[6].trimmed();
+            p.assignedDoctor     = fields[7].trimmed();
+            p.status             = fields[8].trimmed();
+            p.bedNumber          = fields[9].trimmed();
+            patientList.append(p);
+        } else if (fields.size() >= 8) {
+            // Legacy rows without contact/blood group columns
             Patient p;
             p.id                 = fields[0].trimmed();
             p.name               = fields[1].trimmed();
@@ -64,19 +90,21 @@ void PatientManager::_parseStream(QTextStream &in) {
 
 // Rewrites the entire CSV from the in-memory vector (used after any mutation)
 void PatientManager::saveAll() {
-    QFile file("database/patient_database.csv");
+    QFile file("patient_database.csv");
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qDebug() << "PatientManager: Cannot open patient_database.csv for writing.";
         return;
     }
 
     QTextStream out(&file);
-    out << "# patient_id, name, age, gender, diagnosis/treatment, assigned_doctor, status, bed_number\n";
+    out << "# patient_id, name, age, gender, contact, blood_group, diagnosis/treatment, assigned_doctor, status, bed_number\n";
     for (const auto &p : patientList) {
         out << p.id << ","
             << p.name << ","
             << p.age << ","
             << p.gender << ","
+            << p.contact << ","
+            << p.bloodGroup << ","
             << p.diagnosisTreatment << ","
             << p.assignedDoctor << ","
             << p.status << ","
@@ -89,13 +117,15 @@ void PatientManager::saveAll() {
 void PatientManager::addPatient(const Patient &newPatient) {
     patientList.append(newPatient);
 
-    QFile file("database/patient_database.csv");
+    QFile file("patient_database.csv");
     if (file.open(QIODevice::Append | QIODevice::Text)) {
         QTextStream out(&file);
         out << newPatient.id << ","
             << newPatient.name << ","
             << newPatient.age << ","
             << newPatient.gender << ","
+            << newPatient.contact << ","
+            << newPatient.bloodGroup << ","
             << newPatient.diagnosisTreatment << ","
             << newPatient.assignedDoctor << ","
             << newPatient.status << ","

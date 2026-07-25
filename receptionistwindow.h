@@ -15,6 +15,7 @@
 #include "patientmanager.h"
 #include "staffmanager.h"
 #include "billingmanager.h"
+#include "appointmentmanager.h"
 
 namespace Ui {
 class ReceptionistWindow;
@@ -53,9 +54,10 @@ private:
     Ui::ReceptionistWindow *ui;
 
     // Backend Managers
-    PatientManager *patientMgr{nullptr};
-    StaffManager   *staffMgr{nullptr};
-    BillingManager *billingMgr{nullptr};
+    PatientManager     *patientMgr{nullptr};
+    StaffManager       *staffMgr{nullptr};
+    BillingManager     *billingMgr{nullptr};
+    AppointmentManager *apptMgr{nullptr};   // NEW: "Book Appointment" now creates real records here
 
     // UI Controls: Register Patient
     QLineEdit   *txtPatientName{nullptr};
@@ -98,6 +100,7 @@ private:
     void refreshScheduleTable();
     void refreshBillingTable();
     void populatePatientDropdowns();
+    void populateDoctorDropdowns();   // NEW: pulls real doctor names from StaffManager
     void updateSidebarSelection(QPushButton *activeBtn);
     void openEditPatientDialog(const QString &patientId);
 };

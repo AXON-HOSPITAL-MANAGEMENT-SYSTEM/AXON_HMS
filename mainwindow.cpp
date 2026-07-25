@@ -3,6 +3,7 @@
 #include "doctorwindow.h"
 #include "adminwindow.h"
 #include "receptionistwindow.h"
+#include "staffmanager.h"
 #include <QIcon>
 #include <QDebug>
 #include <QMessageBox>
@@ -92,6 +93,11 @@ void MainWindow::handleLogin() {
     on_loginButton_clicked();
 }
 
+// FIX: previously this hand-parsed "staff_database.csv" directly with its
+// own QFile/QTextStream logic, while StaffManager (used by AdminWindow to
+// add/edit staff) read/wrote a different path ("database/staff_database.csv").
+// Any staff Admin added or edited was therefore invisible here. Login now
+// goes through the SAME StaffManager class, so it always sees current data.
 void MainWindow::on_loginButton_clicked()
 {
     QString enteredUser = ui->userInput->text().trimmed();
@@ -103,68 +109,41 @@ void MainWindow::on_loginButton_clicked()
         return;
     }
 
-    QFile file("staff_database.csv");
-    if (!file.exists()) {
-        file.setFileName(":/database/staff_database.csv");
-    }
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, "Error", "Database file not found.");
-        return;
-    }
-
-    QTextStream in(&file);
+    StaffManager staffMgr;   // reads the SAME staff_database.csv Admin writes to
     bool authenticated = false;
 
-    while (!in.atEnd()) {
-        QString line = in.readLine().trimmed();
-        if (line.isEmpty()) continue;
+    for (const StaffData &s : staffMgr.getAllStaff()) {
+        if (enteredUser == s.username &&
+            enteredPass == s.password &&
+            selectedRole.compare(s.role, Qt::CaseInsensitive) == 0) {
 
-        QStringList fields = line.split(",");
+            authenticated = true;
+            QString fullName = s.name.isEmpty() ? s.username : s.name;
 
-        // CSV format: username, password, role, full_name
-        if (fields.size() >= 3) {
-            QString csvUser = fields[0].trimmed();
-            QString csvPass = fields[1].trimmed();
-            QString csvRole = fields[2].trimmed();
-
-            if (enteredUser == csvUser &&
-                enteredPass == csvPass &&
-                selectedRole == csvRole) {
-
-                authenticated = true;
-
-                // 1. Extract full name right here while 'fields' holds the correct row data
-                QString fullName = (fields.size() >= 5) ? fields[4].trimmed() : csvUser;
-
-                // 2. Open the respective window immediately
-                if (selectedRole == "Admin") {
-                    adminwindow *adminWin = new adminwindow(fullName);
-                    adminWin->setAttribute(Qt::WA_DeleteOnClose);
-                    adminWin->show();
-                    this->hide();
-                }
-                else if (selectedRole.compare("Doctor", Qt::CaseInsensitive) == 0) {
-                    qDebug() << "Launching Doctor Window for: " << fullName;
-                    doctorwindow *doctorWin = new doctorwindow(fullName);
-                    doctorWin->setAttribute(Qt::WA_DeleteOnClose);
-                    doctorWin->show();
-                    this->hide();
-                }
-                else if (selectedRole.compare("Receptionist", Qt::CaseInsensitive) == 0) {
-                    qDebug() << "Launching Receptionist Window...";
-                    ReceptionistWindow *receptionistWin = new ReceptionistWindow();
-                    receptionistWin->setAttribute(Qt::WA_DeleteOnClose);
-                    receptionistWin->show();
-                    this->hide();
-                }
-
-                break; // Break out of the while loop since we found the user
+            if (selectedRole.compare("Admin", Qt::CaseInsensitive) == 0) {
+                adminwindow *adminWin = new adminwindow(fullName);
+                adminWin->setAttribute(Qt::WA_DeleteOnClose);
+                adminWin->show();
+                this->hide();
+            } else if (selectedRole.compare("Doctor", Qt::CaseInsensitive) == 0) {
+                qDebug() << "Launching Doctor Window for: " << fullName;
+                doctorwindow *doctorWin = new doctorwindow(fullName);
+                doctorWin->setAttribute(Qt::WA_DeleteOnClose);
+                doctorWin->show();
+                this->hide();
+            } else if (selectedRole.compare("Receptionist", Qt::CaseInsensitive) == 0) {
+                qDebug() << "Launching Receptionist Window...";
+                ReceptionistWindow *receptionistWin = new ReceptionistWindow();
+                receptionistWin->setAttribute(Qt::WA_DeleteOnClose);
+                receptionistWin->show();
+                this->hide();
             }
+
+            break; // Found the matching staff member — stop searching
         }
     }
-    file.close(); // File closes safely here after loop ends or breaks
 
-    // 3. If the loop finished and authenticated is still false, show the failure message
+    // If no matching record was found, show the failure message
     if (!authenticated) {
         QMessageBox::warning(this, "Login Failed",
                              "Invalid username, password, or role.");

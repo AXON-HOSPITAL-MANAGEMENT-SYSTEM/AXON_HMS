@@ -13,6 +13,7 @@
 #include "staffmanager.h"
 #include "patientmanager.h"
 #include "appointmentmanager.h"
+#include "billingmanager.h"
 #include <QtCharts/QChartView>
 #include <QtCharts/QChart>
 #include <QTimer>
@@ -50,6 +51,7 @@ private:
     StaffManager   *staffMgr;
     PatientManager *patientMgr;
     AppointmentManager *apptMgr;
+    BillingManager *billMgr;        // NEW: backs the "Total Revenue (Today)" card
     QTimer         *timer;
     QString         currentAdminName;
 

@@ -35,3 +35,5 @@ This project is for academic purposes only.
 ---
 
 <p align="center">Made with ❤️ by Team AXON · 2nd Semester · CE · Kathmandu University · 2026</p>
+
+---

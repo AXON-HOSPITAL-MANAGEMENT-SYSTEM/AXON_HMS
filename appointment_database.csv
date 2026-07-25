@@ -1,5 +1,5 @@
 # appointment_id, patient_name, doctor_name, department, date, time, reason, status
-APT-0001,Aditya Poudel,hari thapa,Cardiology,2026-07-18,09:00 AM,Cardiac Checkup,Confirmed
-APT-0002,Mira Gurung,hari thapa,Neurology,2026-07-18,10:00 AM,Migraine Follow-up,Confirmed
-APT-0003,Hari Rana,hari thapa,General Medicine,2026-07-19,11:00 AM,Fracture Follow-up,Confirmed
-APT-0004,Sita Wagle,hari thapa,General Medicine,2026-07-20,02:00 PM,General Physical,Confirmed
+APT-0001,Aditya Poudel,Hari Thapa,Cardiology,2026-07-18,09:00 AM,Cardiac Checkup,Confirmed
+APT-0002,Mira Gurung,Hari Thapa,Neurology,2026-07-18,10:00 AM,Migraine Follow-up,Confirmed
+APT-0003,Hari Rana,Hari Thapa,General Medicine,2026-07-19,11:00 AM,Fracture Follow-up,Confirmed
+APT-0004,Sita Wagle,Hari Thapa,General Medicine,2026-07-20,02:00 PM,General Physical,Confirmed

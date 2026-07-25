@@ -4,6 +4,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QDateTime>
+#include <QDate>
 #include <QTimer>
 #include <QMenu>
 #include <QAction>
@@ -99,6 +100,7 @@ adminwindow::adminwindow(const QString &employeeName, QWidget *parent)
     staffMgr     = new StaffManager();
     patientMgr   = new PatientManager();
     apptMgr      = new AppointmentManager();
+    billMgr      = new BillingManager();   // NEW: backs Total Revenue (Today)
     adminBackend = nullptr;
 
     timer = new QTimer(this);
@@ -129,6 +131,7 @@ adminwindow::~adminwindow()
     delete staffMgr;
     delete patientMgr;
     delete apptMgr;
+    delete billMgr;
     if (adminBackend) delete adminBackend;
 }
 
@@ -162,6 +165,7 @@ void adminwindow::on_btnOverview_clicked()
     if (ui->stackedWidget) ui->stackedWidget->setCurrentIndex(0);
     staffMgr->reload();
     patientMgr->reload();
+    billMgr->reload();
     initDashboardGraphs();
     loadPatientRowsFromBackend();
 }
@@ -257,10 +261,28 @@ void adminwindow::initDashboardGraphs()
             "<span style='color:#ec4899;'>●</span> Female &nbsp;"
             "<span style='color:#f59e0b;'>●</span> Other");
 
-    // Revenue trend (mock data)
+    // ===== Revenue trend — FIX: was 100% hardcoded mock data. Now computed
+    // live from BillingManager / billing_database.csv. "Today" is defined
+    // as bills GENERATED today (the only date the billing model tracks),
+    // summed by amountToPay (money actually collected via processPayment).
+    QString todayStr = QDate::currentDate().toString("yyyy-MM-dd");
+    double revenueToday = 0.0;
+    for (const auto &b : billMgr->getAllBills())
+        if (b.date == todayStr) revenueToday += b.amountToPay;
+
+    if (ui->lblValueRevenue)
+        ui->lblValueRevenue->setText(QString("Rs. %1").arg(revenueToday, 0, 'f', 2));
+
     QLineSeries *revSeries = new QLineSeries();
-    revSeries->append(0, 95000);  revSeries->append(1, 110000);
-    revSeries->append(2, 125000); revSeries->append(3, 142500);
+    QDate startDate = QDate::currentDate().addDays(-3);
+    for (int i = 0; i < 4; ++i) {
+        QDate d = startDate.addDays(i);
+        QString dStr = d.toString("yyyy-MM-dd");
+        double dayTotal = 0.0;
+        for (const auto &b : billMgr->getAllBills())
+            if (b.date == dStr) dayTotal += b.amountToPay;
+        revSeries->append(i, dayTotal);
+    }
     revSeries->setPen(QPen(QColor(0x0d9488), 4));
     QChart *revChart = new QChart();
     revChart->addSeries(revSeries);

@@ -1,9 +1,9 @@
-# patient_id, name, age, gender, diagnosis/treatment, assigned_doctor, status, bed_number
-PT-0001,Aditya Poudel,34,Male,Cardiac Checkup,hari thapa,Admitted,B-101
-PT-0002,Mira Gurung,28,Female,Migraine Treatment,hari thapa,Discharged,B-102
-PT-0003,Hari Rana,52,Male,Fracture Follow-up,hari thapa,Admitted,B-103
-PT-0004,Sita Wagle,45,Female,General Physical,hari thapa,Admitted,B-104
-PT-0005,Rajan Shrestha,61,Male,Diabetes Management,hari thapa,Admitted,B-105
-PT-0006,Anita Tamang,39,Female,Hypertension,hari thapa,Discharged,B-106
-PT-0007,Bikash Karki,22,Male,Appendicitis Surgery,hari thapa,Admitted,B-107
-PT-0008,Sunita Lama,55,Female,Kidney Stone,hari thapa,Admitted,B-108
+# patient_id, name, age, gender, contact, blood_group, diagnosis/treatment, assigned_doctor, status, bed_number
+PT-0001,Aditya Poudel,34,Male,9800000001,O+,Cardiac Checkup,Hari Thapa,Admitted,B-101
+PT-0002,Mira Gurung,28,Female,9800000002,A+,Migraine Treatment,Hari Thapa,Discharged,B-102
+PT-0003,Hari Rana,52,Male,9800000003,B+,Fracture Follow-up,Hari Thapa,Admitted,B-103
+PT-0004,Sita Wagle,45,Female,9800000004,O-,General Physical,Hari Thapa,Admitted,B-104
+PT-0005,Rajan Shrestha,61,Male,9800000005,AB+,Diabetes Management,Hari Thapa,Admitted,B-105
+PT-0006,Anita Tamang,39,Female,9800000006,A-,Hypertension,Hari Thapa,Discharged,B-106
+PT-0007,Bikash Karki,22,Male,9800000007,B-,Appendicitis Surgery,Hari Thapa,Admitted,B-107
+PT-0008,Sunita Lama,55,Female,9800000008,O+,Kidney Stone,Hari Thapa,Admitted,B-108

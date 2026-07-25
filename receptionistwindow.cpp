@@ -3,6 +3,7 @@
 #include "ui_receptionistwindow.h"
 #include "staffmanager.h"
 #include "billingmanager.h"
+#include "appointmentmanager.h"
 
 #include <QDateTime>
 #include <QMenu>
@@ -51,6 +52,7 @@ ReceptionistWindow::ReceptionistWindow(QWidget *parent)
     patientMgr = new PatientManager();
     staffMgr   = new StaffManager();
     billingMgr = new BillingManager();
+    apptMgr    = new AppointmentManager();   // NEW: backs real appointment records
 
     // Setup layouts
     setupCardStyles();
@@ -67,6 +69,7 @@ ReceptionistWindow::ReceptionistWindow(QWidget *parent)
     }
     updateSidebarSelection(ui->btnDashboard);
 
+    populateDoctorDropdowns();
     populatePatientDropdowns();
     refreshDashboardStats();
 
@@ -83,6 +86,7 @@ ReceptionistWindow::~ReceptionistWindow()
     delete patientMgr;
     delete staffMgr;
     delete billingMgr;
+    delete apptMgr;
 }
 
 void ReceptionistWindow::setupConnections()
@@ -316,16 +320,13 @@ void ReceptionistWindow::setupRegisterPatientPage()
     txtReasonForVisit->setPlaceholderText("e.g. Routine Checkup, Fever, General Consultation");
     txtReasonForVisit->setStyleSheet(inputStyle);
 
+    // FIX: previously hardcoded fake doctor names (e.g. "Dr. Sharma
+    // (General Medicine)") that matched no real login. That mismatch is
+    // what made a doctor's "My Patients" list end up empty/wrong — the
+    // Doctor window filters patients by exact assignedDoctor == currentUserName.
+    // Now populated from real staff records in populateDoctorDropdowns().
     cmbAssignedDoctor = new QComboBox(formFrame);
     cmbAssignedDoctor->setStyleSheet(inputStyle);
-    cmbAssignedDoctor->addItems({
-        "Select Doctor / Unassigned",
-        "hari thapa",
-        "Dr. Sharma (General Medicine)",
-        "Dr. Verma (Cardiology)",
-        "Dr. Patel (Pediatrics)",
-        "Dr. Karki (Orthopedics)"
-    });
 
     formLayout->addRow("Full Name:", txtPatientName);
     formLayout->addRow("Age:", spnPatientAge);
@@ -357,6 +358,41 @@ void ReceptionistWindow::setupRegisterPatientPage()
     mainFormLayout->addStretch();
 
     ui->page_4->layout()->addWidget(formFrame);
+}
+
+// NEW: pulls real doctor names from staff_database.csv (via StaffManager)
+// instead of a hardcoded fake list, so patients get assigned to a doctor
+// who can actually log in and see them.
+void ReceptionistWindow::populateDoctorDropdowns()
+{
+    if (!staffMgr) return;
+    staffMgr->reload();
+
+    QStringList doctorNames;
+    for (const auto &s : staffMgr->getAllStaff()) {
+        if (s.role.compare("Doctor", Qt::CaseInsensitive) == 0) {
+            QString displayName = s.name.isEmpty() ? s.username : s.name;
+            if (!doctorNames.contains(displayName))
+                doctorNames << displayName;
+        }
+    }
+
+    if (cmbAssignedDoctor) {
+        QString previous = cmbAssignedDoctor->currentText();
+        cmbAssignedDoctor->clear();
+        cmbAssignedDoctor->addItem("Unassigned");
+        cmbAssignedDoctor->addItems(doctorNames);
+        int idx = cmbAssignedDoctor->findText(previous);
+        if (idx >= 0) cmbAssignedDoctor->setCurrentIndex(idx);
+    }
+
+    if (cmbSchedDoctor) {
+        QString previous = cmbSchedDoctor->currentText();
+        cmbSchedDoctor->clear();
+        cmbSchedDoctor->addItems(doctorNames);
+        int idx = cmbSchedDoctor->findText(previous);
+        if (idx >= 0) cmbSchedDoctor->setCurrentIndex(idx);
+    }
 }
 
 void ReceptionistWindow::onSavePatientClicked()
@@ -409,6 +445,7 @@ void ReceptionistWindow::onSavePatientClicked()
     QMessageBox::information(this, "Success", "Patient " + name + " registered successfully with ID " + newPatient.id + "!");
 
     onClearPatientFormClicked();
+    populateDoctorDropdowns();
     populatePatientDropdowns();
     refreshDashboardStats();
     onDashboardClicked();
@@ -477,15 +514,9 @@ void ReceptionistWindow::setupSchedulePage()
     cmbSchedPatient = new QComboBox(formFrame);
     cmbSchedPatient->setStyleSheet(inputStyle);
 
+    // FIX: previously hardcoded fake doctor names — see populateDoctorDropdowns()
     cmbSchedDoctor = new QComboBox(formFrame);
     cmbSchedDoctor->setStyleSheet(inputStyle);
-    cmbSchedDoctor->addItems({
-        "hari thapa",
-        "Dr. Sharma (General Medicine)",
-        "Dr. Verma (Cardiology)",
-        "Dr. Patel (Pediatrics)",
-        "Dr. Karki (Orthopedics)"
-    });
 
     dtSchedDate = new QDateEdit(QDate::currentDate(), formFrame);
     dtSchedDate->setCalendarPopup(true);
@@ -526,8 +557,9 @@ void ReceptionistWindow::setupSchedulePage()
     tableTitle->setStyleSheet("color: #0F172A; font-size: 15px; font-weight: bold; border: none;");
     tableLayout->addWidget(tableTitle);
 
+    // 6 Columns: Appt ID, Patient, Doctor, Date & Time, Status, Action
     scheduleTable = new QTableWidget(0, 6, tableFrame);
-    scheduleTable->setHorizontalHeaderLabels({"ID", "Patient Name", "Doctor", "Date & Time", "Status", "Action"});
+    scheduleTable->setHorizontalHeaderLabels({"Appt ID", "Patient Name", "Doctor", "Date & Time", "Status", "Action"});
     scheduleTable->verticalHeader()->setVisible(false);
 
     QHeaderView *header = scheduleTable->horizontalHeader();
@@ -538,7 +570,7 @@ void ReceptionistWindow::setupSchedulePage()
     header->setSectionResizeMode(4, QHeaderView::ResizeToContents);
     header->setSectionResizeMode(5, QHeaderView::Fixed);
 
-    scheduleTable->setColumnWidth(0, 75);
+    scheduleTable->setColumnWidth(0, 80);
     scheduleTable->setColumnWidth(5, 90);
 
     scheduleTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -554,20 +586,48 @@ void ReceptionistWindow::setupSchedulePage()
     mainLayout->addWidget(tableFrame);
 
     ui->page_5->layout()->addWidget(container);
+    populateDoctorDropdowns();
     populatePatientDropdowns();
     refreshScheduleTable();
 }
 
+// FIX: previously this ONLY mutated the Patient record (assignedDoctor +
+// status) — it never wrote anything to appointment_database.csv, so bookings
+// made here were invisible to Admin's Scheduling tab and to the Doctor's
+// own Schedule tab, both of which read AppointmentManager. Now it creates a
+// real Appointment record via AppointmentManager::addAppointment(), in
+// addition to still updating the Patient's assigned doctor / status.
 void ReceptionistWindow::onBookAppointmentClicked()
 {
     if (!cmbSchedPatient || cmbSchedPatient->count() == 0) {
         QMessageBox::warning(this, "Notice", "No patient selected. Please register a patient first.");
         return;
     }
+    if (!cmbSchedDoctor || cmbSchedDoctor->count() == 0) {
+        QMessageBox::warning(this, "Notice", "No doctors available. Please add a doctor in Admin > Staff Manager first.");
+        return;
+    }
 
     QString patientData = cmbSchedPatient->currentText();
-    QString patientId = patientData.split(" - ").first();
-    QString doctor = cmbSchedDoctor->currentText();
+    QString patientId   = patientData.section(" - ", 0, 0).trimmed();
+    QString patientName = patientData.section(" - ", 1).trimmed();
+    QString doctor       = cmbSchedDoctor->currentText();
+    QString reason       = txtSchedReason ? txtSchedReason->text().trimmed() : "";
+
+    if (apptMgr) {
+        Appointment appt;
+        appt.id          = apptMgr->generateNextId();
+        appt.patientName = patientName.isEmpty() ? patientId : patientName;
+        appt.doctorName  = doctor;
+        appt.department  = "General";
+        appt.date        = dtSchedDate ? dtSchedDate->date().toString("yyyy-MM-dd")
+                                        : QDate::currentDate().toString("yyyy-MM-dd");
+        appt.time        = tmSchedTime ? tmSchedTime->time().toString("hh:mm AP")
+                                        : QTime::currentTime().toString("hh:mm AP");
+        appt.reason      = reason.isEmpty() ? "Consultation" : reason;
+        appt.status      = "Confirmed";
+        apptMgr->addAppointment(appt);
+    }
 
     if (patientMgr) {
         Patient p = patientMgr->getPatientById(patientId);
@@ -579,34 +639,37 @@ void ReceptionistWindow::onBookAppointmentClicked()
     }
 
     QMessageBox::information(this, "Scheduled", "Appointment scheduled successfully for " + patientData);
+    onClearScheduleFormClicked();
     refreshScheduleTable();
     refreshDashboardStats();
 }
 
+// FIX: previously rebuilt this table from the Patient list (one row per
+// patient, regardless of whether an appointment was ever booked). Now reads
+// real Appointment records from AppointmentManager so it matches what
+// Admin and the assigned Doctor see.
 void ReceptionistWindow::refreshScheduleTable()
 {
-    if (!scheduleTable || !patientMgr) return;
+    if (!scheduleTable || !apptMgr) return;
+    apptMgr->reload();
 
-    const auto patients = patientMgr->getAllPatients();
+    const auto appts = apptMgr->getAllAppointments();
     scheduleTable->setRowCount(0);
 
-    for (int i = 0; i < patients.size(); ++i) {
-        const Patient &p = patients[i];
+    for (int i = 0; i < appts.size(); ++i) {
+        const Appointment &a = appts[i];
 
         scheduleTable->insertRow(i);
-        scheduleTable->setItem(i, 0, new QTableWidgetItem(p.id));
-        scheduleTable->setItem(i, 1, new QTableWidgetItem(p.name));
-        scheduleTable->setItem(i, 2, new QTableWidgetItem(p.assignedDoctor.isEmpty() ? "Unassigned" : p.assignedDoctor));
-        scheduleTable->setItem(i, 3, new QTableWidgetItem(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm AP")));
+        scheduleTable->setItem(i, 0, new QTableWidgetItem(a.id));
+        scheduleTable->setItem(i, 1, new QTableWidgetItem(a.patientName));
+        scheduleTable->setItem(i, 2, new QTableWidgetItem(a.doctorName));
+        scheduleTable->setItem(i, 3, new QTableWidgetItem(a.date + "  " + a.time));
 
-        QTableWidgetItem *statusItem = new QTableWidgetItem(p.status);
+        QTableWidgetItem *statusItem = new QTableWidgetItem(a.status);
         statusItem->setTextAlignment(Qt::AlignCenter);
-        if (p.status == "Completed") {
-            statusItem->setForeground(QColor(0x059669)); // Keep completed green
-        } else {
-            statusItem->setForeground(QColor(0x0F172A)); // Default dark black for all other statuses
-        }
-
+        statusItem->setForeground(
+            a.status.compare("Completed", Qt::CaseInsensitive) == 0
+                ? QColor(0x059669) : QColor(0x0F172A));
         scheduleTable->setItem(i, 4, statusItem);
 
         QWidget *actionWidget = new QWidget();
@@ -614,14 +677,18 @@ void ReceptionistWindow::refreshScheduleTable()
         actionLayout->setContentsMargins(0, 0, 0, 0);
         actionLayout->setAlignment(Qt::AlignCenter);
 
-        QPushButton *btnDone = new QPushButton("✓ Done", actionWidget);
-        btnDone->setStyleSheet("QPushButton { background-color: #D1FAE5; color: #065F46; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; font-size: 11px; }");
+        bool isDone = (a.status.compare("Completed", Qt::CaseInsensitive) == 0);
+        QPushButton *btnDone = new QPushButton(isDone ? "Done ✓" : "✓ Done", actionWidget);
+        btnDone->setEnabled(!isDone);
+        btnDone->setStyleSheet(
+            isDone ?
+                "QPushButton { background-color: #F1F5F9; color: #94A3B8; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; }" :
+                "QPushButton { background-color: #D1FAE5; color: #065F46; border: none; border-radius: 4px; padding: 4px 8px; font-weight: bold; font-size: 11px; }"
+            );
 
-        QString pid = p.id;
-        connect(btnDone, &QPushButton::clicked, this, [this, pid]() {
-            Patient p = patientMgr->getPatientById(pid);
-            p.status = "Completed";
-            patientMgr->updatePatient(p);
+        QString apptId = a.id;
+        connect(btnDone, &QPushButton::clicked, this, [this, apptId]() {
+            apptMgr->updateStatus(apptId, "Completed");
             refreshScheduleTable();
             refreshDashboardStats();
         });
@@ -746,7 +813,7 @@ void ReceptionistWindow::onCreateInvoiceClicked()
     }
 
     QString patientData = cmbBillPatient->currentText();
-    QString patientId = patientData.split(" - ").first();
+    QString patientId = patientData.section(" - ", 0, 0).trimmed();
     double amount = spnBillAmount ? spnBillAmount->value() : 0.0;
     QString chargeType = cmbBillType ? cmbBillType->currentText() : "Medical Charge";
     bool isPaid = (cmbBillStatus && cmbBillStatus->currentText() == "Paid");
@@ -775,6 +842,7 @@ void ReceptionistWindow::onCreateInvoiceClicked()
 void ReceptionistWindow::refreshBillingTable()
 {
     if (!billingTable || !billingMgr) return;
+    billingMgr->reload();
 
     const auto bills = billingMgr->getAllBills();
     billingTable->setRowCount(0);
@@ -840,6 +908,7 @@ void ReceptionistWindow::onDashboardClicked()
 
 void ReceptionistWindow::onRegisterPatientClicked()
 {
+    populateDoctorDropdowns();
     if (ui->widgetstackedtogether && ui->page_4) {
         ui->widgetstackedtogether->setCurrentWidget(ui->page_4);
     }
@@ -848,6 +917,7 @@ void ReceptionistWindow::onRegisterPatientClicked()
 
 void ReceptionistWindow::onScheduleClicked()
 {
+    populateDoctorDropdowns();
     if (ui->widgetstackedtogether && ui->page_5) {
         ui->widgetstackedtogether->setCurrentWidget(ui->page_5);
     }
@@ -905,43 +975,58 @@ void ReceptionistWindow::updateDateTime()
     if (lblClock) {
         lblClock->setText(QDateTime::currentDateTime().toString("dddd, MMMM d, yyyy | hh:mm:ss AP"));
     }
+
+    if (ui->dateLevel) {
+        ui->dateLevel->setText(QDate::currentDate().toString("ddd MMM d, yyyy"));
+    }
 }
 
 void ReceptionistWindow::populatePatientDropdowns()
 {
     if (!patientMgr) return;
+    patientMgr->reload();
 
     const auto patients = patientMgr->getAllPatients();
 
     if (cmbSchedPatient) {
+        QString previous = cmbSchedPatient->currentText();
         cmbSchedPatient->clear();
         for (const Patient &p : patients) {
             cmbSchedPatient->addItem(QString("%1 - %2").arg(p.id, p.name));
         }
+        int idx = cmbSchedPatient->findText(previous);
+        if (idx >= 0) cmbSchedPatient->setCurrentIndex(idx);
     }
 
     if (cmbBillPatient) {
+        QString previous = cmbBillPatient->currentText();
         cmbBillPatient->clear();
         for (const Patient &p : patients) {
             cmbBillPatient->addItem(QString("%1 - %2").arg(p.id, p.name));
         }
+        int idx = cmbBillPatient->findText(previous);
+        if (idx >= 0) cmbBillPatient->setCurrentIndex(idx);
     }
 }
 
+// FIX: the appointment count (Completed / Total) now comes from real
+// AppointmentManager records instead of "one row per patient regardless of
+// whether they were ever scheduled".
 void ReceptionistWindow::refreshDashboardStats()
 {
     if (!patientMgr) return;
+    patientMgr->reload();
 
     const auto patients = patientMgr->getAllPatients();
 
-    int totalAppointments = patients.size();
-    int completedAppointments = 0;
+    if (apptMgr) apptMgr->reload();
+    const auto appts = apptMgr ? apptMgr->getAllAppointments() : QVector<Appointment>();
 
-    for (const Patient &p : patients) {
-        if (p.status.compare("Completed", Qt::CaseInsensitive) == 0 ||
-            p.status.compare("Discharged", Qt::CaseInsensitive) == 0) {
+    int totalAppointments = appts.size();
+    int completedAppointments = 0;
+    for (const auto &a : appts) {
+        if (a.status.compare("Completed", Qt::CaseInsensitive) == 0)
             completedAppointments++;
-        }
     }
 
     // 1. Update Total Appointments (Completed / Total)
@@ -954,6 +1039,7 @@ void ReceptionistWindow::refreshDashboardStats()
     int onLeaveDoctors = 0;
 
     if (staffMgr) {
+        staffMgr->reload();
         const auto allStaff = staffMgr->getAllStaff();
         for (const auto &s : allStaff) {
             if (s.role.compare("Doctor", Qt::CaseInsensitive) == 0) {
@@ -964,9 +1050,6 @@ void ReceptionistWindow::refreshDashboardStats()
                 }
             }
         }
-    } else {
-        onDutyDoctors = 4;
-        onLeaveDoctors = 1;
     }
 
     if (ui->numberofavailablebeds) {
@@ -976,6 +1059,7 @@ void ReceptionistWindow::refreshDashboardStats()
     // 3. Update Pending Bills
     double pendingAmount = 0.0;
     if (billingMgr) {
+        billingMgr->reload();
         const auto bills = billingMgr->getAllBills();
         for (const BillingRecord &b : bills) {
             if (b.remainingBalance > 0.0) {
@@ -1004,7 +1088,7 @@ void ReceptionistWindow::refreshDashboardStats()
 
             QTableWidgetItem *statusItem = new QTableWidgetItem(p.status.isEmpty() ? "Waiting" : p.status);
             statusItem->setTextAlignment(Qt::AlignCenter);
-            statusItem->setForeground(QColor(0x0F172A)); // Set default dark text color (removed yellow/orange)
+            statusItem->setForeground(QColor(0x0F172A));
             queueTable->setItem(row, 5, statusItem);
 
             QWidget *actionWidget = new QWidget();
@@ -1073,14 +1157,17 @@ void ReceptionistWindow::refreshDashboardStats()
                 QFormLayout form;
                 form.setSpacing(12);
 
+                // FIX: was a hardcoded fake doctor list — now real staff.
                 QComboBox cmbDoc(&dlg);
-                cmbDoc.addItems({
-                    "hari thapa",
-                    "Dr. Sharma (General Medicine)",
-                    "Dr. Verma (Cardiology)",
-                    "Dr. Patel (Pediatrics)",
-                    "Dr. Karki (Orthopedics)"
-                });
+                if (staffMgr) {
+                    staffMgr->reload();
+                    for (const auto &s : staffMgr->getAllStaff()) {
+                        if (s.role.compare("Doctor", Qt::CaseInsensitive) == 0) {
+                            QString dn = s.name.isEmpty() ? s.username : s.name;
+                            if (cmbDoc.findText(dn) < 0) cmbDoc.addItem(dn);
+                        }
+                    }
+                }
                 cmbDoc.setCurrentText(p.assignedDoctor);
 
                 QComboBox cmbStat(&dlg);
