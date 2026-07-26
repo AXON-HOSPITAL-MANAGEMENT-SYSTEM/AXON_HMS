@@ -542,7 +542,7 @@ void adminwindow::updateStaffCountLabel()
                 "Doctors: <b>%2</b> &nbsp;|&nbsp; "
                 "Admins: <b>%3</b> &nbsp;|&nbsp; "
                 "Receptionists: <b>%4</b>")
-        .arg(total).arg(docs).arg(admins).arg(recs));
+            .arg(total).arg(docs).arg(admins).arg(recs));
 }
 
 void adminwindow::refreshStaffTable()
@@ -611,6 +611,11 @@ void adminwindow::addStaffRow(const StaffData &s)
 
     QString staffIdCopy = s.id;
 
+    // FIX: Edit now supports changing the Staff ID itself (outIdEdit),
+    // and validates that the new username/ID don't collide with any OTHER
+    // staff member's record before saving (previously only Add Staff had
+    // this check, so renaming someone's username to a value already used
+    // by another employee would silently overwrite without warning).
     connect(btnEdit, &QPushButton::clicked, this, [=]() {
         StaffData current = staffMgr->searchStaff(staffIdCopy);
 
@@ -618,6 +623,7 @@ void adminwindow::addStaffRow(const StaffData &s)
         QLineEdit *usernameEdit = nullptr;
         QLineEdit *passwordEdit = nullptr;
         QComboBox *roleBox      = nullptr;
+        QLineEdit *idEdit       = nullptr;
         QLineEdit *nameEdit     = nullptr;
         QLineEdit *ageEdit      = nullptr;
         QComboBox *genderBox    = nullptr;
@@ -626,21 +632,49 @@ void adminwindow::addStaffRow(const StaffData &s)
 
         QDialog *dlg = createEditStaffDialog(
             current, this,
-            usernameEdit, passwordEdit, roleBox,
+            usernameEdit, passwordEdit, roleBox, idEdit,
             nameEdit, ageEdit, genderBox,
             phoneEdit, statusBox);
 
         if (dlg->exec() == QDialog::Accepted) {
-            current.username = usernameEdit->text().trimmed();
+            QString newUsername = usernameEdit->text().trimmed();
+            QString newId       = idEdit->text().trimmed();
+
+            // Duplicate checks against every OTHER staff member (exclude
+            // the record currently being edited, identified by its
+            // original id staffIdCopy).
+            for (const auto &other : staffMgr->getAllStaff()) {
+                if (other.id == staffIdCopy) continue; // skip self
+
+                if (other.username.compare(newUsername, Qt::CaseInsensitive) == 0) {
+                    QMessageBox::warning(this, "Duplicate Username",
+                                         QString("Username \"%1\" is already used by staff member %2 (%3).")
+                                             .arg(newUsername, other.name, other.id));
+                    dlg->deleteLater();
+                    return;
+                }
+                if (other.id.compare(newId, Qt::CaseInsensitive) == 0) {
+                    QMessageBox::warning(this, "Duplicate Staff ID",
+                                         QString("Staff ID \"%1\" is already used by %2.")
+                                             .arg(newId, other.name));
+                    dlg->deleteLater();
+                    return;
+                }
+            }
+
+            current.username = newUsername;
             current.password = passwordEdit->text().trimmed();
             current.role     = roleBox->currentText();
+            current.id       = newId;
             current.name     = nameEdit->text().trimmed();
             current.age      = ageEdit->text().trimmed();
             current.gender   = genderBox->currentText();
             current.phone    = phoneEdit->text().trimmed();
             current.status   = statusBox->currentText();
 
-            if (staffMgr->updateStaff(current)) {
+            // Look the record up by its ORIGINAL id (staffIdCopy), since
+            // the id itself may have just changed above.
+            if (staffMgr->updateStaff(staffIdCopy, current)) {
                 refreshStaffTable();
                 initDashboardGraphs();
             }
@@ -651,11 +685,11 @@ void adminwindow::addStaffRow(const StaffData &s)
     connect(btnRemove, &QPushButton::clicked, this, [=]() {
         StaffData s2 = staffMgr->searchStaff(staffIdCopy);
         auto reply = QMessageBox::question(this,
-            "Confirm Removal",
-            QString("Remove staff member <b>%1</b> (%2)?<br>"
-                    "This will also delete their login credentials.")
-            .arg(s2.name, s2.id),
-            QMessageBox::Yes | QMessageBox::No);
+                                           "Confirm Removal",
+                                           QString("Remove staff member <b>%1</b> (%2)?<br>"
+                                                   "This will also delete their login credentials.")
+                                               .arg(s2.name, s2.id),
+                                           QMessageBox::Yes | QMessageBox::No);
         if (reply == QMessageBox::Yes) {
             staffMgr->removeStaff(staffIdCopy);
             refreshStaffTable();
@@ -691,8 +725,8 @@ void adminwindow::onAddStaffClicked()
     QComboBox *statusBox    = nullptr;
 
     QDialog *dlg = createAddStaffDialog(this,
-        usernameEdit, passwordEdit, roleBox, idEdit,
-        nameEdit, ageEdit, genderBox, phoneEdit, statusBox);
+                                        usernameEdit, passwordEdit, roleBox, idEdit,
+                                        nameEdit, ageEdit, genderBox, phoneEdit, statusBox);
 
     if (dlg->exec() != QDialog::Accepted) {
         dlg->deleteLater();
@@ -714,14 +748,14 @@ void adminwindow::onAddStaffClicked()
 
     // Duplicate checks
     for (const auto &s : staffMgr->getAllStaff()) {
-        if (s.username == newStaff.username) {
+        if (s.username.compare(newStaff.username, Qt::CaseInsensitive) == 0) {
             QMessageBox::warning(this, "Duplicate Username",
-                "A staff member with that username already exists.");
+                                 "A staff member with that username already exists.");
             return;
         }
-        if (s.id == newStaff.id) {
+        if (s.id.compare(newStaff.id, Qt::CaseInsensitive) == 0) {
             QMessageBox::warning(this, "Duplicate Staff ID",
-                "A staff member with that ID already exists.");
+                                 "A staff member with that ID already exists.");
             return;
         }
     }
@@ -731,9 +765,9 @@ void adminwindow::onAddStaffClicked()
     initDashboardGraphs();
 
     QMessageBox::information(this, "Staff Added",
-        QString("Staff member <b>%1</b> added successfully.<br>"
-                "Login: <b>%2</b> / <b>%3</b>")
-        .arg(newStaff.name, newStaff.username, newStaff.password));
+                             QString("Staff member <b>%1</b> added successfully.<br>"
+                                     "Login: <b>%2</b> / <b>%3</b>")
+                                 .arg(newStaff.name, newStaff.username, newStaff.password));
 }
 
 
