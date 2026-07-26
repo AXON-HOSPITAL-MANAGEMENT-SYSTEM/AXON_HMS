@@ -128,6 +128,19 @@ bool StaffManager::updateStaff(const StaffData &updated) {
     return false;
 }
 
+// NEW: same as above, but looks the record up by its ORIGINAL id first —
+// needed now that the Edit dialog lets the Staff ID itself be changed.
+bool StaffManager::updateStaff(const QString &oldStaffId, const StaffData &updated) {
+    for (auto &s : staffList) {
+        if (s.id == oldStaffId) {
+            s = updated;
+            saveAll();
+            return true;
+        }
+    }
+    return false;
+}
+
 QVector<StaffData> StaffManager::getAllStaff() const {
     return staffList;
 }
@@ -141,11 +154,11 @@ int StaffManager::getTotalCount() const {
 
 
 QDialog *createAddStaffDialog(QWidget *parent,
-                               QLineEdit *&outUsernameEdit, QLineEdit *&outPasswordEdit,
-                               QComboBox *&outRoleBox, QLineEdit *&outIdEdit,
-                               QLineEdit *&outNameEdit, QLineEdit *&outAgeEdit,
-                               QComboBox *&outGenderBox, QLineEdit *&outPhoneEdit,
-                               QComboBox *&outStatusBox)
+                              QLineEdit *&outUsernameEdit, QLineEdit *&outPasswordEdit,
+                              QComboBox *&outRoleBox, QLineEdit *&outIdEdit,
+                              QLineEdit *&outNameEdit, QLineEdit *&outAgeEdit,
+                              QComboBox *&outGenderBox, QLineEdit *&outPhoneEdit,
+                              QComboBox *&outStatusBox)
 {
     QDialog *dlg = new QDialog(parent);
     dlg->setWindowTitle("Add New Staff Member");
@@ -157,7 +170,7 @@ QDialog *createAddStaffDialog(QWidget *parent,
         "  background: #f8fafc; color: #0f172a; font-size: 12px; }"
         "QLineEdit:focus, QComboBox:focus { border: 1px solid #0284c7; background: #fff; }"
         "QPushButton { padding: 8px 16px; font-weight: bold; border-radius: 8px; font-size: 12px; }"
-    );
+        );
 
     QFormLayout *form = new QFormLayout(dlg);
     form->setContentsMargins(28, 28, 28, 28);
@@ -242,11 +255,16 @@ QDialog *createAddStaffDialog(QWidget *parent,
     return dlg;
 }
 
+// NEW: outIdEdit param added so Staff ID can be edited too. Pre-filled with
+// the current id, same validation style as the other fields (caller in
+// adminwindow.cpp is responsible for duplicate-id / duplicate-username
+// checks, same pattern as onAddStaffClicked()).
 QDialog *createEditStaffDialog(const StaffData &s, QWidget *parent,
-                                QLineEdit *&outUsernameEdit, QLineEdit *&outPasswordEdit,
-                                QComboBox *&outRoleBox, QLineEdit *&outNameEdit,
-                                QLineEdit *&outAgeEdit, QComboBox *&outGenderBox,
-                                QLineEdit *&outPhoneEdit, QComboBox *&outStatusBox)
+                               QLineEdit *&outUsernameEdit, QLineEdit *&outPasswordEdit,
+                               QComboBox *&outRoleBox, QLineEdit *&outIdEdit,
+                               QLineEdit *&outNameEdit, QLineEdit *&outAgeEdit,
+                               QComboBox *&outGenderBox, QLineEdit *&outPhoneEdit,
+                               QComboBox *&outStatusBox)
 {
     QDialog *dlg = new QDialog(parent);
     dlg->setWindowTitle("Edit Staff — " + s.id);
@@ -258,7 +276,7 @@ QDialog *createEditStaffDialog(const StaffData &s, QWidget *parent,
         "  background: #f8fafc; color: #0f172a; }"
         "QLineEdit:focus, QComboBox:focus { border: 1px solid #0284c7; background: #fff; }"
         "QPushButton { padding: 8px 16px; font-weight: bold; border-radius: 8px; }"
-    );
+        );
 
     QFormLayout *form = new QFormLayout(dlg);
     form->setContentsMargins(24, 24, 24, 24);
@@ -270,6 +288,7 @@ QDialog *createEditStaffDialog(const StaffData &s, QWidget *parent,
     QComboBox *roleBox      = new QComboBox(dlg);
     roleBox->addItems({"Admin", "Doctor", "Receptionist"});
     roleBox->setCurrentText(s.role);
+    QLineEdit *idEdit    = new QLineEdit(s.id, dlg);
     QLineEdit *nameEdit  = new QLineEdit(s.name,   dlg);
     QLineEdit *ageEdit   = new QLineEdit(s.age,    dlg);
     QComboBox *genderBox = new QComboBox(dlg);
@@ -283,6 +302,7 @@ QDialog *createEditStaffDialog(const StaffData &s, QWidget *parent,
     form->addRow("Username:", usernameEdit);
     form->addRow("Password:", passwordEdit);
     form->addRow("Role:",     roleBox);
+    form->addRow("Staff ID:", idEdit);
     form->addRow("Name:",     nameEdit);
     form->addRow("Age:",      ageEdit);
     form->addRow("Gender:",   genderBox);
@@ -300,11 +320,21 @@ QDialog *createEditStaffDialog(const StaffData &s, QWidget *parent,
     form->addRow(btns);
 
     QObject::connect(cancel, &QPushButton::clicked, dlg, &QDialog::reject);
-    QObject::connect(save,   &QPushButton::clicked, dlg, &QDialog::accept);
+    QObject::connect(save,   &QPushButton::clicked, dlg, [=]() {
+        if (usernameEdit->text().trimmed().isEmpty() ||
+            passwordEdit->text().trimmed().isEmpty() ||
+            idEdit->text().trimmed().isEmpty()       ||
+            nameEdit->text().trimmed().isEmpty()) {
+            QMessageBox::warning(dlg, "Incomplete", "Username, Password, Staff ID, and Name are required.");
+            return;
+        }
+        dlg->accept();
+    });
 
     outUsernameEdit = usernameEdit;
     outPasswordEdit = passwordEdit;
     outRoleBox      = roleBox;
+    outIdEdit       = idEdit;
     outNameEdit     = nameEdit;
     outAgeEdit      = ageEdit;
     outGenderBox    = genderBox;
