@@ -437,7 +437,7 @@ color: rgb(0, 0, 0);</string>
       <item>
        <widget class="QStackedWidget" name="widgetstackedtogether">
         <property name="currentIndex">
-         <number>0</number>
+         <number>3</number>
         </property>
         <widget class="QWidget" name="page_3">
          <layout class="QVBoxLayout" name="verticalLayout_page3">
@@ -579,7 +579,19 @@ color: rgb(0, 0, 0);</string>
         </widget>
         <widget class="QWidget" name="page_4"/>
         <widget class="QWidget" name="page_5"/>
-        <widget class="QWidget" name="page_6"/>
+        <widget class="QWidget" name="page_6">
+         <widget class="QWidget" name="billingTopRow" native="true">
+          <property name="geometry">
+           <rect>
+            <x>750</x>
+            <y>40</y>
+            <width>921</width>
+            <height>270</height>
+           </rect>
+          </property>
+          <layout class="QHBoxLayout" name="billingTopRowLayout"/>
+         </widget>
+        </widget>
        </widget>
       </item>
      </layout>

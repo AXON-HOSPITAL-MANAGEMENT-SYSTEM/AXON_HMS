@@ -13,8 +13,10 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QTextEdit>
 #include <QComboBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
@@ -27,6 +29,9 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QColor>
+#include <QRadioButton>
+#include <QButtonGroup>
+#include <QStackedWidget>
 
 ReceptionistWindow::ReceptionistWindow(QWidget *parent)
     : QWidget(parent)
@@ -471,12 +476,45 @@ void ReceptionistWindow::onClearScheduleFormClicked()
     if (txtSchedReason) txtSchedReason->clear();
 }
 
+// REWRITTEN for the new Billing page layout (Patient Lookup + Current Bill
+// Summary + Payment Details). See onSearchBillingPatientClicked() below for
+// what "clearing" the billing form now means.
 void ReceptionistWindow::onClearBillingFormClicked()
 {
-    if (cmbBillPatient && cmbBillPatient->count() > 0) cmbBillPatient->setCurrentIndex(0);
-    if (cmbBillType && cmbBillType->count() > 0) cmbBillType->setCurrentIndex(0);
-    if (spnBillAmount) spnBillAmount->setValue(1000.0);
-    if (cmbBillStatus && cmbBillStatus->count() > 0) cmbBillStatus->setCurrentIndex(0);
+    if (txtBillSearch) txtBillSearch->clear();
+    if (lblBillPatientId) lblBillPatientId->setText("Patient ID: —");
+    if (lblBillPatientName) lblBillPatientName->setText("Name: —");
+    if (lblBillPatientAge) lblBillPatientAge->setText("Age: —");
+    if (lblBillPatientGender) lblBillPatientGender->setText("Gender: —");
+
+    if (tblCurrentBillSummary) tblCurrentBillSummary->setRowCount(0);
+
+    if (radCash) radCash->setChecked(true);
+    if (spnAmountToPay) spnAmountToPay->setValue(0.0);
+    if (spnDiscount) spnDiscount->setValue(0.0);
+    if (cmbInsuranceProvider) cmbInsuranceProvider->setCurrentIndex(0);
+    if (txtPolicyMemberId) txtPolicyMemberId->clear();
+    if (txtPreAuthCode) txtPreAuthCode->clear();
+    if (spnCoveredAmount) spnCoveredAmount->setValue(0.0);
+    if (txtBillNotes) txtBillNotes->clear();
+
+    // NEW: reset payment-mode-specific stacked-widget fields
+    if (spnCashReceived) spnCashReceived->setValue(0.0);
+    if (lblChangeDue) lblChangeDue->setText("Change Due: Rs. 0.00");
+    if (cmbCardType) cmbCardType->setCurrentIndex(0);
+    if (txtCardLast4) txtCardLast4->clear();
+    if (txtCardAuthCode) txtCardAuthCode->clear();
+    if (cmbOnlineMethod) cmbOnlineMethod->setCurrentIndex(0);
+    if (txtOnlineTxnId) txtOnlineTxnId->clear();
+    if (txtOnlinePayerRef) txtOnlinePayerRef->clear();
+
+    currentLookupPatientId.clear();
+    currentGeneratedBillId.clear();
+
+    onPaymentModeChanged();
+
+    if (btnGenerateBill) btnGenerateBill->setEnabled(false);
+    if (btnProcessPayment) btnProcessPayment->setEnabled(false);
 }
 
 void ReceptionistWindow::setupSchedulePage()
@@ -621,9 +659,9 @@ void ReceptionistWindow::onBookAppointmentClicked()
         appt.doctorName  = doctor;
         appt.department  = "General";
         appt.date        = dtSchedDate ? dtSchedDate->date().toString("yyyy-MM-dd")
-                                        : QDate::currentDate().toString("yyyy-MM-dd");
+                                : QDate::currentDate().toString("yyyy-MM-dd");
         appt.time        = tmSchedTime ? tmSchedTime->time().toString("hh:mm AP")
-                                        : QTime::currentTime().toString("hh:mm AP");
+                                : QTime::currentTime().toString("hh:mm AP");
         appt.reason      = reason.isEmpty() ? "Consultation" : reason;
         appt.status      = "Confirmed";
         apptMgr->addAppointment(appt);
@@ -698,203 +736,613 @@ void ReceptionistWindow::refreshScheduleTable()
     }
 }
 
+// ======================================================================
+// BILLING PAGE — REWRITTEN to match the new mockup:
+//   Row 1: [Patient Lookup / Information]  [Current Bill Summary]
+//   Row 2: [Payment Details]  (payment mode, amount, discount, and a
+//           QStackedWidget with mode-specific fields for
+//           Cash / Card / Online / Insurance, plus notes and the
+//           Generate Bill / Process Payment buttons)
+// ======================================================================
 void ReceptionistWindow::setupBillingPage()
 {
     if (!ui->page_6) return;
 
     if (!ui->page_6->layout()) {
         QVBoxLayout *p6Layout = new QVBoxLayout(ui->page_6);
-        p6Layout->setContentsMargins(0, 0, 0, 0);
+        p6Layout->setContentsMargins(10, 10, 10, 10);
     }
 
-    QWidget *container = new QWidget(this);
-    QHBoxLayout *mainLayout = new QHBoxLayout(container);
-    mainLayout->setContentsMargins(0, 0, 0, 0);
-    mainLayout->setSpacing(20);
-
-    QFrame *formFrame = new QFrame(this);
-    formFrame->setFixedWidth(340);
-    formFrame->setStyleSheet("QFrame { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; }");
-
-    QVBoxLayout *formLayout = new QVBoxLayout(formFrame);
-    formLayout->setContentsMargins(20, 20, 20, 20);
-    formLayout->setSpacing(12);
-
-    QLabel *lblTitle = new QLabel("💳 Create Patient Invoice", formFrame);
-    lblTitle->setStyleSheet("color: #0F172A; font-size: 16px; font-weight: bold; border: none;");
-    formLayout->addWidget(lblTitle);
-
     QString inputStyle =
-        "QLineEdit, QComboBox, QDoubleSpinBox {"
-        "   background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 6px; font-size: 12px;"
+        "QLineEdit, QComboBox, QDoubleSpinBox, QTextEdit {"
+        "   background-color: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px; font-size: 12px;"
         "}"
-        "QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus { border: 1px solid #38BDF8; background-color: #FFFFFF; }";
+        "QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus, QTextEdit:focus { border: 1px solid #38BDF8; background-color: #FFFFFF; }";
 
-    cmbBillPatient = new QComboBox(formFrame);
-    cmbBillPatient->setStyleSheet(inputStyle);
+    QString sectionTitleStyle = "color: #0F172A; font-size: 16px; font-weight: bold; border: none;";
+    QString frameStyle = "QFrame { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; }";
+    QString fieldLabelStyle = "color: #334155; font-size: 12px; font-weight: 600; border: none;";
 
-    cmbBillType = new QComboBox(formFrame);
-    cmbBillType->setStyleSheet(inputStyle);
-    cmbBillType->addItems({"Consultation Fee", "Admission Charges", "Lab Test", "Emergency Services", "Surgery"});
+    // FIX: previously this built a "naked" QVBoxLayout and added it to
+    // page_6's layout via layout()->addItem(pageLayout). addItem() does
+    // NOT reparent the widgets inside a nested layout to page_6 - only
+    // addLayout()/addWidget() do that. As a result every billing widget
+    // stayed parented directly to ReceptionistWindow itself and got drawn
+    // as a floating layer across the WHOLE window, covering the sidebar
+    // (logo + nav buttons) and the top bar (clock, receptionist name).
+    // Building everything inside a real container QWidget and adding that
+    // with addWidget() keeps the page properly confined inside page_6,
+    // same as every other page in this file.
+    QWidget *billingContainer = new QWidget(ui->page_6);
+    QVBoxLayout *pageLayout = new QVBoxLayout(billingContainer);
+    pageLayout->setContentsMargins(0, 0, 0, 0);
+    pageLayout->setSpacing(16);
 
-    spnBillAmount = new QDoubleSpinBox(formFrame);
-    spnBillAmount->setRange(0.0, 500000.0);
-    spnBillAmount->setValue(1000.0);
-    spnBillAmount->setPrefix("Rs. ");
-    spnBillAmount->setStyleSheet(inputStyle);
+    // ---------- Row 1: Patient Lookup + Current Bill Summary ----------
+    QHBoxLayout *topRow = new QHBoxLayout();
+    topRow->setSpacing(16);
 
-    cmbBillStatus = new QComboBox(formFrame);
-    cmbBillStatus->setStyleSheet(inputStyle);
-    cmbBillStatus->addItems({"Unpaid", "Paid"});
+    // -- Patient Lookup / Information --
+    QFrame *lookupFrame = new QFrame(this);
+    lookupFrame->setStyleSheet(frameStyle);
+    QVBoxLayout *lookupLayout = new QVBoxLayout(lookupFrame);
+    lookupLayout->setContentsMargins(18, 18, 18, 18);
+    lookupLayout->setSpacing(10);
 
-    QFormLayout *inputs = new QFormLayout();
-    inputs->setSpacing(10);
-    inputs->addRow("Patient:", cmbBillPatient);
-    inputs->addRow("Charge Type:", cmbBillType);
-    inputs->addRow("Amount:", spnBillAmount);
-    inputs->addRow("Status:", cmbBillStatus);
+    QLabel *lblLookupTitle = new QLabel("Patient Lookup / Information", lookupFrame);
+    lblLookupTitle->setStyleSheet(sectionTitleStyle);
+    lookupLayout->addWidget(lblLookupTitle);
 
-    formLayout->addLayout(inputs);
+    QHBoxLayout *searchRow = new QHBoxLayout();
+    txtBillSearch = new QLineEdit(lookupFrame);
+    txtBillSearch->setPlaceholderText("Patient Name (or ID)");
+    txtBillSearch->setStyleSheet(inputStyle);
 
-    QPushButton *btnCreateBill = new QPushButton("Generate Invoice", formFrame);
-    btnCreateBill->setStyleSheet("QPushButton { background-color: #10B981; color: white; font-weight: bold; border-radius: 6px; padding: 10px; border: none; } QPushButton:hover { background-color: #059669; }");
-    connect(btnCreateBill, &QPushButton::clicked, this, &ReceptionistWindow::onCreateInvoiceClicked);
+    btnBillSearch = new QPushButton("Search", lookupFrame);
+    btnBillSearch->setStyleSheet(
+        "QPushButton { background-color: #0284C7; color: white; font-weight: bold; border-radius: 6px; padding: 8px 18px; border: none; } "
+        "QPushButton:hover { background-color: #0369A1; }"
+        );
+    connect(btnBillSearch, &QPushButton::clicked, this, &ReceptionistWindow::onSearchBillingPatientClicked);
+    connect(txtBillSearch, &QLineEdit::returnPressed, this, &ReceptionistWindow::onSearchBillingPatientClicked);
 
-    formLayout->addWidget(btnCreateBill);
-    formLayout->addStretch();
+    searchRow->addWidget(txtBillSearch);
+    searchRow->addWidget(btnBillSearch);
+    lookupLayout->addLayout(searchRow);
 
-    QFrame *tableFrame = new QFrame(this);
-    tableFrame->setStyleSheet("QFrame { background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; }");
+    QFrame *infoBox = new QFrame(lookupFrame);
+    infoBox->setStyleSheet("QFrame { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; }");
+    QVBoxLayout *infoLayout = new QVBoxLayout(infoBox);
+    infoLayout->setContentsMargins(14, 12, 14, 12);
+    infoLayout->setSpacing(4);
 
-    QVBoxLayout *tableLayout = new QVBoxLayout(tableFrame);
-    tableLayout->setContentsMargins(15, 15, 15, 15);
+    QString infoLblStyle = "color: #0F172A; font-size: 13px; border: none; background: transparent;";
 
-    QLabel *tableTitle = new QLabel("Billing & Invoices Record", tableFrame);
-    tableTitle->setStyleSheet("color: #0F172A; font-size: 15px; font-weight: bold; border: none;");
-    tableLayout->addWidget(tableTitle);
+    lblBillPatientId = new QLabel("Patient ID: —", infoBox);
+    lblBillPatientId->setStyleSheet("color: #0F172A; font-size: 13px; font-weight: bold; border: none; background: transparent;");
+    lblBillPatientName = new QLabel("Name: —", infoBox);
+    lblBillPatientName->setStyleSheet(infoLblStyle);
+    lblBillPatientAge = new QLabel("Age: —", infoBox);
+    lblBillPatientAge->setStyleSheet(infoLblStyle);
+    lblBillPatientGender = new QLabel("Gender: —", infoBox);
+    lblBillPatientGender->setStyleSheet(infoLblStyle);
 
-    billingTable = new QTableWidget(0, 6, tableFrame);
-    billingTable->setHorizontalHeaderLabels({"Bill ID", "Patient ID", "Description", "Amount", "Status", "Action"});
-    billingTable->verticalHeader()->setVisible(false);
+    infoLayout->addWidget(lblBillPatientId);
+    infoLayout->addWidget(lblBillPatientName);
+    infoLayout->addWidget(lblBillPatientAge);
+    infoLayout->addWidget(lblBillPatientGender);
 
-    QHeaderView *header = billingTable->horizontalHeader();
-    header->setSectionResizeMode(0, QHeaderView::Fixed);
-    header->setSectionResizeMode(1, QHeaderView::Fixed);
-    header->setSectionResizeMode(2, QHeaderView::Stretch);
-    header->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    header->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    header->setSectionResizeMode(5, QHeaderView::Fixed);
+    lookupLayout->addWidget(infoBox);
+    lookupLayout->addStretch();
 
-    billingTable->setColumnWidth(0, 80);
-    billingTable->setColumnWidth(1, 85);
-    billingTable->setColumnWidth(5, 90);
+    // -- Current Bill Summary --
+    QFrame *summaryFrame = new QFrame(this);
+    summaryFrame->setStyleSheet(frameStyle);
+    QVBoxLayout *summaryLayout = new QVBoxLayout(summaryFrame);
+    summaryLayout->setContentsMargins(18, 18, 18, 18);
+    summaryLayout->setSpacing(10);
 
-    billingTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    billingTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    billingTable->setStyleSheet(
+    QLabel *lblSummaryTitle = new QLabel("Current Bill Summary", summaryFrame);
+    lblSummaryTitle->setStyleSheet(sectionTitleStyle);
+    summaryLayout->addWidget(lblSummaryTitle);
+
+    tblCurrentBillSummary = new QTableWidget(0, 3, summaryFrame);
+    tblCurrentBillSummary->setHorizontalHeaderLabels({"Service", "Description", "Amount($)"});
+    tblCurrentBillSummary->verticalHeader()->setVisible(false);
+    tblCurrentBillSummary->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    tblCurrentBillSummary->setSelectionBehavior(QAbstractItemView::SelectRows);
+    QHeaderView *sumHeader = tblCurrentBillSummary->horizontalHeader();
+    sumHeader->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    sumHeader->setSectionResizeMode(1, QHeaderView::Stretch);
+    sumHeader->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    tblCurrentBillSummary->setStyleSheet(
         "QTableWidget { border: none; gridline-color: #F1F5F9; font-size: 12px; color: #0F172A; }"
         "QHeaderView::section { background-color: #F8FAFC; color: #475569; font-weight: bold; border: none; padding: 8px; }"
         );
+    summaryLayout->addWidget(tblCurrentBillSummary);
 
-    tableLayout->addWidget(billingTable);
+    topRow->addWidget(lookupFrame, 1);
+    topRow->addWidget(summaryFrame, 1);
+    pageLayout->addLayout(topRow);
 
-    mainLayout->addWidget(formFrame);
-    mainLayout->addWidget(tableFrame);
+    // ---------- Row 2: Payment Details ----------
+    QFrame *paymentFrame = new QFrame(this);
+    paymentFrame->setStyleSheet(frameStyle);
+    QVBoxLayout *paymentLayout = new QVBoxLayout(paymentFrame);
+    paymentLayout->setContentsMargins(18, 18, 18, 18);
+    paymentLayout->setSpacing(12);
 
-    ui->page_6->layout()->addWidget(container);
-    refreshBillingTable();
+    QLabel *lblPaymentTitle = new QLabel("Payment Details", paymentFrame);
+    lblPaymentTitle->setStyleSheet(sectionTitleStyle);
+    paymentLayout->addWidget(lblPaymentTitle);
+
+    // Payment Mode row
+    QHBoxLayout *modeRow = new QHBoxLayout();
+    QLabel *lblMode = new QLabel("Payment Mode:", paymentFrame);
+    lblMode->setStyleSheet("color: #334155; font-size: 13px; font-weight: 600; border: none;");
+
+    radCash      = new QRadioButton("Cash", paymentFrame);
+    radCard      = new QRadioButton("Card", paymentFrame);
+    radOnline    = new QRadioButton("Online", paymentFrame);
+    radInsurance = new QRadioButton("Insurance", paymentFrame);
+    radCash->setChecked(true);
+
+    paymentModeGroup = new QButtonGroup(this);
+    paymentModeGroup->addButton(radCash);
+    paymentModeGroup->addButton(radCard);
+    paymentModeGroup->addButton(radOnline);
+    paymentModeGroup->addButton(radInsurance);
+
+    connect(radCash,      &QRadioButton::toggled, this, &ReceptionistWindow::onPaymentModeChanged);
+    connect(radCard,      &QRadioButton::toggled, this, &ReceptionistWindow::onPaymentModeChanged);
+    connect(radOnline,    &QRadioButton::toggled, this, &ReceptionistWindow::onPaymentModeChanged);
+    connect(radInsurance, &QRadioButton::toggled, this, &ReceptionistWindow::onPaymentModeChanged);
+
+    modeRow->addWidget(lblMode);
+    modeRow->addWidget(radCash);
+    modeRow->addWidget(radCard);
+    modeRow->addWidget(radOnline);
+    modeRow->addWidget(radInsurance);
+    modeRow->addStretch();
+    paymentLayout->addLayout(modeRow);
+
+    // Amount to Pay / Discount
+    QGridLayout *amountGrid = new QGridLayout();
+    amountGrid->setHorizontalSpacing(20);
+    amountGrid->setVerticalSpacing(4);
+
+    QLabel *lblAmount = new QLabel("Amount to Pay", paymentFrame);
+    lblAmount->setStyleSheet("color: #334155; font-size: 12px; font-weight: 600; border: none;");
+    QLabel *lblDiscount = new QLabel("Discount", paymentFrame);
+    lblDiscount->setStyleSheet("color: #334155; font-size: 12px; font-weight: 600; border: none;");
+
+    spnAmountToPay = new QDoubleSpinBox(paymentFrame);
+    spnAmountToPay->setRange(0.0, 500000.0);
+    spnAmountToPay->setPrefix("Rs. ");
+    spnAmountToPay->setStyleSheet(inputStyle);
+
+    spnDiscount = new QDoubleSpinBox(paymentFrame);
+    spnDiscount->setRange(0.0, 500000.0);
+    spnDiscount->setPrefix("Rs. ");
+    spnDiscount->setStyleSheet(inputStyle);
+
+    amountGrid->addWidget(lblAmount, 0, 0);
+    amountGrid->addWidget(lblDiscount, 0, 1);
+    amountGrid->addWidget(spnAmountToPay, 1, 0);
+    amountGrid->addWidget(spnDiscount, 1, 1);
+    paymentLayout->addLayout(amountGrid);
+
+    // NEW: recalc change-due whenever Amount to Pay changes (cash page)
+    connect(spnAmountToPay, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &ReceptionistWindow::updateChangeDue);
+
+    // ---------- Stacked payment-mode-specific details ----------
+    stackedPaymentDetails = new QStackedWidget(paymentFrame);
+
+    // -- Cash page --
+    pageCash = new QWidget();
+    QFormLayout *cashForm = new QFormLayout(pageCash);
+    cashForm->setSpacing(10);
+    cashForm->setContentsMargins(0, 0, 0, 0);
+
+    QLabel *lblCashReceived = new QLabel("Cash Received", pageCash);
+    lblCashReceived->setStyleSheet(fieldLabelStyle);
+
+    spnCashReceived = new QDoubleSpinBox(pageCash);
+    spnCashReceived->setRange(0.0, 500000.0);
+    spnCashReceived->setPrefix("Rs. ");
+    spnCashReceived->setStyleSheet(inputStyle);
+    connect(spnCashReceived, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &ReceptionistWindow::updateChangeDue);
+
+    lblChangeDue = new QLabel("Change Due: Rs. 0.00", pageCash);
+    lblChangeDue->setStyleSheet("color: #059669; font-size: 13px; font-weight: bold; border: none;");
+
+    cashForm->addRow(lblCashReceived, spnCashReceived);
+    cashForm->addRow(new QLabel("", pageCash), lblChangeDue);
+
+    // -- Card page --
+    pageCard = new QWidget();
+    QGridLayout *cardGrid = new QGridLayout(pageCard);
+    cardGrid->setContentsMargins(0, 0, 0, 0);
+    cardGrid->setHorizontalSpacing(20);
+    cardGrid->setVerticalSpacing(4);
+
+    QLabel *lblCardType = new QLabel("Card Type", pageCard);
+    lblCardType->setStyleSheet(fieldLabelStyle);
+    QLabel *lblCardLast4 = new QLabel("Last 4 Digits", pageCard);
+    lblCardLast4->setStyleSheet(fieldLabelStyle);
+
+    cmbCardType = new QComboBox(pageCard);
+    cmbCardType->addItems({"Debit", "Credit"});
+    cmbCardType->setStyleSheet(inputStyle);
+
+    txtCardLast4 = new QLineEdit(pageCard);
+    txtCardLast4->setPlaceholderText("XXXX");
+    txtCardLast4->setMaxLength(4);
+    txtCardLast4->setStyleSheet(inputStyle);
+
+    QLabel *lblCardAuth = new QLabel("Authorization / Approval Code", pageCard);
+    lblCardAuth->setStyleSheet(fieldLabelStyle);
+    txtCardAuthCode = new QLineEdit(pageCard);
+    txtCardAuthCode->setStyleSheet(inputStyle);
+
+    cardGrid->addWidget(lblCardType, 0, 0);
+    cardGrid->addWidget(lblCardLast4, 0, 1);
+    cardGrid->addWidget(cmbCardType, 1, 0);
+    cardGrid->addWidget(txtCardLast4, 1, 1);
+    cardGrid->addWidget(lblCardAuth, 2, 0, 1, 2);
+    cardGrid->addWidget(txtCardAuthCode, 3, 0, 1, 2);
+
+    // -- Online page --
+    pageOnline = new QWidget();
+    QGridLayout *onlineGrid = new QGridLayout(pageOnline);
+    onlineGrid->setContentsMargins(0, 0, 0, 0);
+    onlineGrid->setHorizontalSpacing(20);
+    onlineGrid->setVerticalSpacing(4);
+
+    QLabel *lblOnlineMethod = new QLabel("Payment Method", pageOnline);
+    lblOnlineMethod->setStyleSheet(fieldLabelStyle);
+    QLabel *lblOnlineTxn = new QLabel("Transaction ID", pageOnline);
+    lblOnlineTxn->setStyleSheet(fieldLabelStyle);
+
+    cmbOnlineMethod = new QComboBox(pageOnline);
+    cmbOnlineMethod->addItems({"eSewa", "Khalti", "Online Banking", "Other"});
+    cmbOnlineMethod->setStyleSheet(inputStyle);
+
+    txtOnlineTxnId = new QLineEdit(pageOnline);
+    txtOnlineTxnId->setStyleSheet(inputStyle);
+
+    QLabel *lblOnlineRef = new QLabel("Payer Reference (eSewa ID / Wallet No.)", pageOnline);
+    lblOnlineRef->setStyleSheet(fieldLabelStyle);
+    txtOnlinePayerRef = new QLineEdit(pageOnline);
+    txtOnlinePayerRef->setStyleSheet(inputStyle);
+
+    onlineGrid->addWidget(lblOnlineMethod, 0, 0);
+    onlineGrid->addWidget(cmbOnlineMethod, 1, 0);
+    onlineGrid->addWidget(lblOnlineTxn, 0, 1);
+    onlineGrid->addWidget(txtOnlineTxnId, 1, 1);
+    onlineGrid->addWidget(lblOnlineRef, 2, 0, 1, 2);
+    onlineGrid->addWidget(txtOnlinePayerRef, 3, 0, 1, 2);
+
+    // -- Insurance page (Insurance Provider / Policy / Pre-Auth / Covered Amount) --
+    pageInsurance = new QWidget();
+    QVBoxLayout *insuranceLayout = new QVBoxLayout(pageInsurance);
+    insuranceLayout->setContentsMargins(0, 0, 0, 0);
+    insuranceLayout->setSpacing(10);
+
+    QGridLayout *insGrid = new QGridLayout();
+    insGrid->setHorizontalSpacing(20);
+    insGrid->setVerticalSpacing(4);
+
+    QLabel *lblProvider = new QLabel("Insurance Provider", pageInsurance);
+    lblProvider->setStyleSheet(fieldLabelStyle);
+    QLabel *lblPolicy = new QLabel("Policy / Member ID", pageInsurance);
+    lblPolicy->setStyleSheet(fieldLabelStyle);
+
+    cmbInsuranceProvider = new QComboBox(pageInsurance);
+    cmbInsuranceProvider->addItems({"National Health Insurance Board", "Private Health Assurance", "Employer Group Plan", "Other"});
+    cmbInsuranceProvider->setStyleSheet(inputStyle);
+
+    txtPolicyMemberId = new QLineEdit(pageInsurance);
+    txtPolicyMemberId->setStyleSheet(inputStyle);
+
+    insGrid->addWidget(lblProvider, 0, 0);
+    insGrid->addWidget(lblPolicy, 0, 1);
+    insGrid->addWidget(cmbInsuranceProvider, 1, 0);
+    insGrid->addWidget(txtPolicyMemberId, 1, 1);
+
+    QGridLayout *authGrid = new QGridLayout();
+    authGrid->setHorizontalSpacing(20);
+    authGrid->setVerticalSpacing(4);
+
+    QLabel *lblPreAuth = new QLabel("Pre-Auth Code", pageInsurance);
+    lblPreAuth->setStyleSheet(fieldLabelStyle);
+    QLabel *lblCovered = new QLabel("Covered Amount", pageInsurance);
+    lblCovered->setStyleSheet(fieldLabelStyle);
+
+    txtPreAuthCode = new QLineEdit(pageInsurance);
+    txtPreAuthCode->setStyleSheet(inputStyle);
+
+    spnCoveredAmount = new QDoubleSpinBox(pageInsurance);
+    spnCoveredAmount->setRange(0.0, 500000.0);
+    spnCoveredAmount->setPrefix("Rs. ");
+    spnCoveredAmount->setStyleSheet(inputStyle);
+
+    authGrid->addWidget(lblPreAuth, 0, 0);
+    authGrid->addWidget(lblCovered, 0, 1);
+    authGrid->addWidget(txtPreAuthCode, 1, 0);
+    authGrid->addWidget(spnCoveredAmount, 1, 1);
+
+    insuranceLayout->addLayout(insGrid);
+    insuranceLayout->addLayout(authGrid);
+
+    // Assemble stack: index 0=Cash, 1=Card, 2=Online, 3=Insurance
+    stackedPaymentDetails->addWidget(pageCash);
+    stackedPaymentDetails->addWidget(pageCard);
+    stackedPaymentDetails->addWidget(pageOnline);
+    stackedPaymentDetails->addWidget(pageInsurance);
+
+    paymentLayout->addWidget(stackedPaymentDetails);
+
+    // Notes
+    QLabel *lblNotes = new QLabel("Notes", paymentFrame);
+    lblNotes->setStyleSheet("color: #334155; font-size: 12px; font-weight: 600; border: none;");
+    paymentLayout->addWidget(lblNotes);
+
+    txtBillNotes = new QTextEdit(paymentFrame);
+    txtBillNotes->setPlaceholderText("Enter your notes here...");
+    txtBillNotes->setFixedHeight(60);
+    txtBillNotes->setStyleSheet(inputStyle);
+    paymentLayout->addWidget(txtBillNotes);
+
+    // Bottom buttons
+    QHBoxLayout *btnRow = new QHBoxLayout();
+    btnRow->addStretch();
+
+    btnGenerateBill = new QPushButton("Generate Bill", paymentFrame);
+    btnGenerateBill->setStyleSheet(
+        "QPushButton { background-color: #0284C7; color: white; font-weight: bold; border-radius: 6px; padding: 10px 20px; border: none; } "
+        "QPushButton:hover { background-color: #0369A1; } "
+        "QPushButton:disabled { background-color: #CBD5E1; }"
+        );
+    connect(btnGenerateBill, &QPushButton::clicked, this, &ReceptionistWindow::onGenerateBillClicked);
+
+    btnProcessPayment = new QPushButton("Process Payment", paymentFrame);
+    btnProcessPayment->setStyleSheet(
+        "QPushButton { background-color: #10B981; color: white; font-weight: bold; border-radius: 6px; padding: 10px 20px; border: none; } "
+        "QPushButton:hover { background-color: #059669; } "
+        "QPushButton:disabled { background-color: #CBD5E1; }"
+        );
+    connect(btnProcessPayment, &QPushButton::clicked, this, &ReceptionistWindow::onProcessPaymentClicked);
+
+    btnRow->addWidget(btnGenerateBill);
+    btnRow->addWidget(btnProcessPayment);
+    paymentLayout->addLayout(btnRow);
+
+    pageLayout->addWidget(paymentFrame);
+
+    ui->page_6->layout()->addWidget(billingContainer);
+
+    // Start with no patient looked up yet
+    onClearBillingFormClicked();
 }
 
-void ReceptionistWindow::onCreateInvoiceClicked()
+// NEW: looks up a patient by ID or (partial) name, fills the info box, and
+// loads their most recent unpaid bill (if any) into the Current Bill
+// Summary table so the receptionist can collect payment or start a new bill.
+void ReceptionistWindow::onSearchBillingPatientClicked()
 {
-    if (!cmbBillPatient || cmbBillPatient->count() == 0) {
-        QMessageBox::warning(this, "Notice", "Please select a patient.");
+    if (!txtBillSearch || !patientMgr) return;
+
+    QString query = txtBillSearch->text().trimmed();
+    if (query.isEmpty()) {
+        QMessageBox::warning(this, "Notice", "Enter a patient name or ID to search.");
         return;
     }
 
-    QString patientData = cmbBillPatient->currentText();
-    QString patientId = patientData.section(" - ", 0, 0).trimmed();
-    double amount = spnBillAmount ? spnBillAmount->value() : 0.0;
-    QString chargeType = cmbBillType ? cmbBillType->currentText() : "Medical Charge";
-    bool isPaid = (cmbBillStatus && cmbBillStatus->currentText() == "Paid");
+    patientMgr->reload();
+    const auto patients = patientMgr->getAllPatients();
 
-    if (billingMgr) {
-        BillItem item;
-        item.serviceCode = "SVC";
-        item.description = chargeType;
-        item.amount = amount;
-
-        QVector<BillItem> items = { item };
-
-        QString billId = billingMgr->generateBill(patientId, items, 0.0, 0.0, "Generated via Receptionist Dashboard");
-
-        if (isPaid && !billId.isEmpty()) {
-            billingMgr->processPayment(billId, amount, "Cash", "Full payment collected upon billing.");
+    Patient found;
+    for (const Patient &p : patients) {
+        if (p.id.compare(query, Qt::CaseInsensitive) == 0) {
+            found = p;
+            break;
         }
-
-        QMessageBox::information(this, "Success", QString("Invoice %1 generated successfully for patient %2!").arg(billId, patientId));
+    }
+    if (found.id.isEmpty()) {
+        for (const Patient &p : patients) {
+            if (p.name.contains(query, Qt::CaseInsensitive)) {
+                found = p;
+                break;
+            }
+        }
     }
 
-    refreshBillingTable();
+    if (found.id.isEmpty()) {
+        QMessageBox::warning(this, "Not Found", "No patient matched \"" + query + "\".");
+        return;
+    }
+
+    currentLookupPatientId = found.id;
+    currentGeneratedBillId.clear();
+
+    if (lblBillPatientId) lblBillPatientId->setText("Patient ID: " + found.id);
+    if (lblBillPatientName) lblBillPatientName->setText("Name: " + found.name);
+    if (lblBillPatientAge) lblBillPatientAge->setText("Age: " + found.age);
+    if (lblBillPatientGender) lblBillPatientGender->setText("Gender: " + found.gender);
+
+    if (tblCurrentBillSummary) tblCurrentBillSummary->setRowCount(0);
+    if (spnAmountToPay) spnAmountToPay->setValue(0.0);
+
+    // Load the patient's most recent unpaid bill, if one exists
+    if (billingMgr) {
+        billingMgr->reload();
+        const auto bills = billingMgr->getAllBills();
+        for (const BillingRecord &b : bills) {
+            if (b.patientId.compare(found.id, Qt::CaseInsensitive) == 0 && b.remainingBalance > 0.001) {
+                currentGeneratedBillId = b.billId;
+
+                if (tblCurrentBillSummary) {
+                    int row = 0;
+                    for (const BillItem &item : b.items) {
+                        tblCurrentBillSummary->insertRow(row);
+                        tblCurrentBillSummary->setItem(row, 0, new QTableWidgetItem(item.serviceCode));
+                        tblCurrentBillSummary->setItem(row, 1, new QTableWidgetItem(item.description));
+                        tblCurrentBillSummary->setItem(row, 2, new QTableWidgetItem(QString::number(item.amount, 'f', 2)));
+                        row++;
+                    }
+                }
+
+                if (spnAmountToPay) spnAmountToPay->setValue(b.remainingBalance);
+                break;
+            }
+        }
+    }
+
+    if (btnGenerateBill) btnGenerateBill->setEnabled(true);
+    if (btnProcessPayment) btnProcessPayment->setEnabled(!currentGeneratedBillId.isEmpty());
+}
+
+// NEW: switches the stacked widget page based on the selected payment
+// mode, so only the fields relevant to Cash / Card / Online / Insurance
+// are shown to the receptionist.
+void ReceptionistWindow::onPaymentModeChanged()
+{
+    if (!stackedPaymentDetails) return;
+
+    if (radCash && radCash->isChecked()) {
+        stackedPaymentDetails->setCurrentWidget(pageCash);
+        updateChangeDue();
+    } else if (radCard && radCard->isChecked()) {
+        stackedPaymentDetails->setCurrentWidget(pageCard);
+    } else if (radOnline && radOnline->isChecked()) {
+        stackedPaymentDetails->setCurrentWidget(pageOnline);
+    } else if (radInsurance && radInsurance->isChecked()) {
+        stackedPaymentDetails->setCurrentWidget(pageInsurance);
+    }
+}
+
+// NEW: recomputes "Change Due" on the Cash page whenever Cash Received or
+// Amount to Pay changes.
+void ReceptionistWindow::updateChangeDue()
+{
+    if (!lblChangeDue || !spnCashReceived || !spnAmountToPay) return;
+    double change = spnCashReceived->value() - spnAmountToPay->value();
+    lblChangeDue->setText(QString("Change Due: Rs. %1").arg(change > 0 ? change : 0.0, 0, 'f', 2));
+}
+
+// NEW: creates a bill for the looked-up patient using the Amount to Pay /
+// Discount / Notes fields, mirroring what the old dropdown-driven
+// "Generate Invoice" flow used to do, but sourced from the new layout.
+void ReceptionistWindow::onGenerateBillClicked()
+{
+    if (currentLookupPatientId.isEmpty()) {
+        QMessageBox::warning(this, "Notice", "Please search for a patient first.");
+        return;
+    }
+    if (!billingMgr) return;
+
+    double amount = spnAmountToPay ? spnAmountToPay->value() : 0.0;
+    double discount = spnDiscount ? spnDiscount->value() : 0.0;
+
+    if (amount <= 0.0) {
+        QMessageBox::warning(this, "Validation Error", "Amount to Pay must be greater than 0.");
+        return;
+    }
+
+    QString desc = txtBillNotes && !txtBillNotes->toPlainText().trimmed().isEmpty()
+                       ? txtBillNotes->toPlainText().trimmed()
+                       : "General Services";
+
+    BillItem item;
+    item.serviceCode = "SVC";
+    item.description = desc;
+    item.amount = amount;
+
+    QVector<BillItem> items = { item };
+
+    QString billId = billingMgr->generateBill(currentLookupPatientId, items, discount, 0.0,
+                                              "Generated via Receptionist Dashboard");
+
+    if (billId.isEmpty()) {
+        QMessageBox::warning(this, "Error", "Could not generate the bill.");
+        return;
+    }
+
+    currentGeneratedBillId = billId;
+
+    // If paying by insurance and a covered amount was entered, record it
+    // as an immediate partial payment against the new bill.
+    if (radInsurance && radInsurance->isChecked() && spnCoveredAmount && spnCoveredAmount->value() > 0.0) {
+        QString insNote = QString("Insurance: %1 | Policy: %2 | Pre-Auth: %3")
+        .arg(cmbInsuranceProvider ? cmbInsuranceProvider->currentText() : "",
+             txtPolicyMemberId ? txtPolicyMemberId->text() : "",
+             txtPreAuthCode ? txtPreAuthCode->text() : "");
+        billingMgr->processPayment(billId, spnCoveredAmount->value(), "Insurance", insNote);
+    }
+
+    QMessageBox::information(this, "Bill Generated", "Bill " + billId + " generated successfully.");
+
+    onSearchBillingPatientClicked(); // refresh summary table + remaining balance
     refreshDashboardStats();
 }
 
-void ReceptionistWindow::refreshBillingTable()
+// NEW: collects payment against the currently loaded bill using the
+// selected Payment Mode and remaining Amount to Pay. Also captures the
+// mode-specific details entered in the stacked widget into the bill notes.
+void ReceptionistWindow::onProcessPaymentClicked()
 {
-    if (!billingTable || !billingMgr) return;
-    billingMgr->reload();
-
-    const auto bills = billingMgr->getAllBills();
-    billingTable->setRowCount(0);
-
-    for (int i = 0; i < bills.size(); ++i) {
-        const BillingRecord &b = bills[i];
-
-        billingTable->insertRow(i);
-        billingTable->setItem(i, 0, new QTableWidgetItem(b.billId));
-        billingTable->setItem(i, 1, new QTableWidgetItem(b.patientId));
-
-        QString desc = b.items.isEmpty() ? "General Services" : b.items.first().description;
-        if (b.items.size() > 1) {
-            desc += QString(" (+%1 more)").arg(b.items.size() - 1);
-        }
-        billingTable->setItem(i, 2, new QTableWidgetItem(desc));
-
-        billingTable->setItem(i, 3, new QTableWidgetItem(QString("Rs. %1").arg(b.subtotal, 0, 'f', 2)));
-
-        bool isPaid = (b.remainingBalance <= 0.001);
-        QTableWidgetItem *statusItem = new QTableWidgetItem(isPaid ? "Paid" : "Unpaid");
-        statusItem->setTextAlignment(Qt::AlignCenter);
-        statusItem->setForeground(isPaid ? QColor(0x10B981) : QColor(0xEF4444));
-        billingTable->setItem(i, 4, statusItem);
-
-        QWidget *actionWidget = new QWidget();
-        QHBoxLayout *actionLayout = new QHBoxLayout(actionWidget);
-        actionLayout->setContentsMargins(0, 0, 0, 0);
-        actionLayout->setAlignment(Qt::AlignCenter);
-
-        QPushButton *btnPay = new QPushButton(isPaid ? "Paid ✓" : "Pay Now", actionWidget);
-        btnPay->setEnabled(!isPaid);
-        btnPay->setStyleSheet(
-            isPaid ?
-                "QPushButton { background-color: #F1F5F9; color: #94A3B8; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; }" :
-                "QPushButton { background-color: #FEF3C7; color: #D97706; border: 1px solid #FCD34D; border-radius: 4px; padding: 4px 8px; font-weight: bold; font-size: 11px; }"
-            );
-
-        QString targetBillId = b.billId;
-        double remBalance = b.remainingBalance;
-
-        connect(btnPay, &QPushButton::clicked, this, [this, targetBillId, remBalance]() {
-            if (billingMgr) {
-                billingMgr->processPayment(targetBillId, remBalance, "Cash", "Cleared via Receptionist Table");
-                refreshBillingTable();
-                refreshDashboardStats();
-            }
-        });
-
-        actionLayout->addWidget(btnPay);
-        billingTable->setCellWidget(i, 5, actionWidget);
+    if (currentGeneratedBillId.isEmpty()) {
+        QMessageBox::warning(this, "Notice", "No active bill to pay. Generate a bill first.");
+        return;
     }
+    if (!billingMgr) return;
+
+    double amount = spnAmountToPay ? spnAmountToPay->value() : 0.0;
+    if (amount <= 0.0) {
+        QMessageBox::warning(this, "Validation Error", "Amount to Pay must be greater than 0.");
+        return;
+    }
+
+    QString mode = "Cash";
+    if (radCard && radCard->isChecked()) mode = "Card";
+    else if (radOnline && radOnline->isChecked()) mode = "Online";
+    else if (radInsurance && radInsurance->isChecked()) mode = "Insurance";
+
+    QString userNotes = txtBillNotes ? txtBillNotes->toPlainText().trimmed() : "";
+    QString modeDetails;
+
+    if (mode == "Cash") {
+        double received = spnCashReceived ? spnCashReceived->value() : 0.0;
+        modeDetails = QString("Cash Received: Rs. %1 | Change: Rs. %2")
+                          .arg(received, 0, 'f', 2)
+                          .arg(qMax(0.0, received - amount), 0, 'f', 2);
+    } else if (mode == "Card") {
+        modeDetails = QString("Card: %1 ending %2 | Auth: %3")
+        .arg(cmbCardType ? cmbCardType->currentText() : "",
+             txtCardLast4 ? txtCardLast4->text() : "",
+             txtCardAuthCode ? txtCardAuthCode->text() : "");
+    } else if (mode == "Online") {
+        modeDetails = QString("%1 | Txn ID: %2 | Ref: %3")
+        .arg(cmbOnlineMethod ? cmbOnlineMethod->currentText() : "",
+             txtOnlineTxnId ? txtOnlineTxnId->text() : "",
+             txtOnlinePayerRef ? txtOnlinePayerRef->text() : "");
+    } else if (mode == "Insurance") {
+        modeDetails = QString("Insurance: %1 | Policy: %2 | Pre-Auth: %3")
+        .arg(cmbInsuranceProvider ? cmbInsuranceProvider->currentText() : "",
+             txtPolicyMemberId ? txtPolicyMemberId->text() : "",
+             txtPreAuthCode ? txtPreAuthCode->text() : "");
+    }
+
+    QString finalNotes = userNotes.isEmpty() ? modeDetails : userNotes + " | " + modeDetails;
+
+    billingMgr->processPayment(currentGeneratedBillId, amount, mode, finalNotes);
+
+    QMessageBox::information(this, "Payment Processed",
+                             "Payment recorded for bill " + currentGeneratedBillId + ".");
+
+    onClearBillingFormClicked();
+    refreshDashboardStats();
 }
 
 void ReceptionistWindow::onDashboardClicked()
@@ -932,8 +1380,7 @@ void ReceptionistWindow::onBillingClicked()
         ui->widgetstackedtogether->setCurrentWidget(ui->page_6);
     }
     updateSidebarSelection(ui->btnBilling);
-    populatePatientDropdowns();
-    refreshBillingTable();
+    onClearBillingFormClicked();
 }
 
 void ReceptionistWindow::onMenuClicked()
@@ -981,6 +1428,9 @@ void ReceptionistWindow::updateDateTime()
     }
 }
 
+// NOTE: cmbBillPatient no longer exists (Billing page now uses the
+// search box instead of a dropdown) — this function now only populates
+// the Schedule page's patient dropdown.
 void ReceptionistWindow::populatePatientDropdowns()
 {
     if (!patientMgr) return;
@@ -996,16 +1446,6 @@ void ReceptionistWindow::populatePatientDropdowns()
         }
         int idx = cmbSchedPatient->findText(previous);
         if (idx >= 0) cmbSchedPatient->setCurrentIndex(idx);
-    }
-
-    if (cmbBillPatient) {
-        QString previous = cmbBillPatient->currentText();
-        cmbBillPatient->clear();
-        for (const Patient &p : patients) {
-            cmbBillPatient->addItem(QString("%1 - %2").arg(p.id, p.name));
-        }
-        int idx = cmbBillPatient->findText(previous);
-        if (idx >= 0) cmbBillPatient->setCurrentIndex(idx);
     }
 }
 
