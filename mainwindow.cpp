@@ -27,7 +27,13 @@ MainWindow::MainWindow(QWidget *parent)
         ui->passInput->setFocus();
     });
     connect(ui->passInput, &QLineEdit::returnPressed, this, &MainWindow::handleLogin);
-    connect(ui->loginButton, &QPushButton::clicked, this, &MainWindow::handleLogin);
+
+    // NOTE: ui->loginButton's clicked() signal is auto-connected to
+    // on_loginButton_clicked() by Qt's setupUi() via its naming convention
+    // (on_<objectName>_<signalName>). Do NOT manually connect it again here
+    // (e.g. connect(ui->loginButton, &QPushButton::clicked, this, &MainWindow::handleLogin))
+    // — doing so double-fires the slot on every click, which was opening
+    // two dashboard windows per login.
 
     // Password visibility action setup
     eyeAction = new QAction(this);
@@ -132,8 +138,8 @@ void MainWindow::on_loginButton_clicked()
                 doctorWin->show();
                 this->hide();
             } else if (selectedRole.compare("Receptionist", Qt::CaseInsensitive) == 0) {
-                qDebug() << "Launching Receptionist Window...";
-                ReceptionistWindow *receptionistWin = new ReceptionistWindow();
+                qDebug() << "Launching Receptionist Window for: " << fullName;
+                ReceptionistWindow *receptionistWin = new ReceptionistWindow(fullName);
                 receptionistWin->setAttribute(Qt::WA_DeleteOnClose);
                 receptionistWin->show();
                 this->hide();

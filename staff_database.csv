@@ -1,4 +1,10 @@
 # username,password,Role,staff_id,full_name,age,gender,phone,status
-admin,admin,Admin,STF_001,ADMIN,19,Male,9700000000,On Duty
-doctor,doctor,Doctor,STF_002,Hari Thapa,46,Male,9801029202,On Duty
-r,r,Receptionist,STF_003,sita shr,27,Female,9822222222,On Duty
+axonadmin,Adm!n2026,Admin,STF_001,Rajesh Karki,42,Male,9800000001,On Duty
+drhari,DrH@ri321,Doctor,STF_002,Hari Thapa,46,Male,9801029202,On Duty
+drmeera,Meer@Doc9,Doctor,STF_003,Meera Shrestha,38,Female,9802345671,On Duty
+drsanjay,SanjMed77,Doctor,STF_004,Sanjay Gurung,50,Male,9803456782,On Duty
+drpriya,PriyaCare5,Doctor,STF_005,Priya Basnet,34,Female,9804567893,On Duty
+drbikash,BikDoc44,Doctor,STF_006,Bikash Rai,45,Male,9805678904,On Duty
+recepsita,Sita@2026,Receptionist,STF_007,Sita Sharma,27,Female,9822222222,On Duty
+recepanita,AnitaR12,Receptionist,STF_008,Anita Magar,25,Female,9806789015,On Duty
+recepsuman,Suman#88,Receptionist,STF_009,Suman Adhikari,29,Male,9807890126,On Duty
