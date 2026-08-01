@@ -1,5 +1,5 @@
 # 🏥 AXON HMS
-**Hospital Management System** — 2nd Semester Project
+**Hospital Management System** — 2nd Semester Project @ Kathmandu University
 
 ---
 
@@ -13,8 +13,8 @@ AXON HMS is a hospital management system built as a 2nd semester academic projec
 | Name | Role |
 |------|------|
 | Ankit Sigdel | Team Lead & System Architect |
-| Sudarshan Rijal | UI/UX Designer & Presentation |
-| Pranjal Upadhyay | Database Designer & Testing/QA |
+| Sudarshan Rijal | UI Designer & Presentation |
+| Pranjal Upadhyay | Database Designer |
 | Princu Thapa | Documentation & Research |
 
  Supervisor: Er. Bipesh Raj Subedi
@@ -24,7 +24,7 @@ AXON HMS is a hospital management system built as a 2nd semester academic projec
 ## 🛠 Tools & Technologies
 
 - **UI Design:** Qt Framework
-- **Documentation:** Microsoft Word / Google Docs
+- **Documentation:** Microsoft Word / Google Docs / LaTex
 - **Presentation:** PowerPoint / Google Slides / Canva
 
 ---
@@ -34,6 +34,6 @@ This project is for academic purposes only.
 
 ---
 
-<p align="center">Made with ❤️ by Team AXON · 2nd Semester · CE · Kathmandu University · 2026</p>
+<p align="center">Made by Team AXON · 2nd Semester · CE · Kathmandu University · 2026</p>
 
 ---
