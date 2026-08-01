@@ -33,12 +33,24 @@
 #include <QButtonGroup>
 #include <QStackedWidget>
 
-ReceptionistWindow::ReceptionistWindow(QWidget *parent)
+ReceptionistWindow::ReceptionistWindow(const QString &receptionistName, QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::ReceptionistWindow)
+    , currentReceptionistName(receptionistName.isEmpty() ? "Receptionist" : receptionistName)
 {
     ui->setupUi(this);
     this->setWindowTitle("AXON-HMS: Receptionist Dashboard");
+
+    // NEW: find the "Welcome back, RECEPTIONIST!" label by scanning all
+    // QLabels for that text, since it isn't set up with a known objectName.
+    // This works regardless of where/how it was originally created.
+    const QList<QLabel*> allLabels = this->findChildren<QLabel*>();
+    for (QLabel *lbl : allLabels) {
+        if (lbl->text().contains("Welcome back", Qt::CaseInsensitive)) {
+            lbl->setText("Welcome back, " + currentReceptionistName + "!");
+            break;
+        }
+    }
 
     // Enable stylesheet painting and force background
     this->setAttribute(Qt::WA_StyledBackground, true);
@@ -487,7 +499,15 @@ void ReceptionistWindow::onClearBillingFormClicked()
     if (lblBillPatientAge) lblBillPatientAge->setText("Age: —");
     if (lblBillPatientGender) lblBillPatientGender->setText("Gender: —");
 
-    if (tblCurrentBillSummary) tblCurrentBillSummary->setRowCount(0);
+    if (cmbBillItemService) cmbBillItemService->setCurrentIndex(0);
+    if (txtBillItemDesc) txtBillItemDesc->clear();
+    if (spnBillItemAmount) spnBillItemAmount->setValue(0.0);
+    if (cmbBillItemService) cmbBillItemService->setEnabled(true);
+    if (txtBillItemDesc) txtBillItemDesc->setEnabled(true);
+    if (spnBillItemAmount) spnBillItemAmount->setEnabled(true);
+    if (btnAddBillItem) btnAddBillItem->setEnabled(true);
+    pendingBillItems.clear();
+    refreshBillSummaryTable();
 
     if (radCash) radCash->setChecked(true);
     if (spnAmountToPay) spnAmountToPay->setValue(0.0);
@@ -846,8 +866,41 @@ void ReceptionistWindow::setupBillingPage()
     lblSummaryTitle->setStyleSheet(sectionTitleStyle);
     summaryLayout->addWidget(lblSummaryTitle);
 
-    tblCurrentBillSummary = new QTableWidget(0, 3, summaryFrame);
-    tblCurrentBillSummary->setHorizontalHeaderLabels({"Service", "Description", "Amount($)"});
+    // NEW: Add Line Item mini-form — lets the receptionist add multiple
+    // charges (Lab Test, Room Charge, Procedure, etc.), not just one.
+    QHBoxLayout *addItemRow = new QHBoxLayout();
+    addItemRow->setSpacing(8);
+
+    cmbBillItemService = new QComboBox(summaryFrame);
+    cmbBillItemService->addItems({"Consultation", "Lab Test", "Medication", "Procedure", "Room Charge", "Other"});
+    cmbBillItemService->setStyleSheet(inputStyle);
+
+    txtBillItemDesc = new QLineEdit(summaryFrame);
+    txtBillItemDesc->setPlaceholderText("Description (e.g. CBC Test, X-Ray)");
+    txtBillItemDesc->setStyleSheet(inputStyle);
+
+    spnBillItemAmount = new QDoubleSpinBox(summaryFrame);
+    spnBillItemAmount->setRange(0.0, 500000.0);
+    spnBillItemAmount->setPrefix("Rs. ");
+    spnBillItemAmount->setStyleSheet(inputStyle);
+
+    btnAddBillItem = new QPushButton("+ Add", summaryFrame);
+    btnAddBillItem->setStyleSheet(
+        "QPushButton { background-color: #0284C7; color: white; font-weight: bold; border-radius: 6px; padding: 8px 14px; border: none; } "
+        "QPushButton:hover { background-color: #0369A1; } "
+        "QPushButton:disabled { background-color: #CBD5E1; }"
+        );
+    connect(btnAddBillItem, &QPushButton::clicked, this, &ReceptionistWindow::onAddBillItemClicked);
+
+    addItemRow->addWidget(cmbBillItemService, 2);
+    addItemRow->addWidget(txtBillItemDesc, 3);
+    addItemRow->addWidget(spnBillItemAmount, 2);
+    addItemRow->addWidget(btnAddBillItem, 1);
+    summaryLayout->addLayout(addItemRow);
+
+    // 4 Columns now: Service, Description, Amount, Action (Remove)
+    tblCurrentBillSummary = new QTableWidget(0, 4, summaryFrame);
+    tblCurrentBillSummary->setHorizontalHeaderLabels({"Service", "Description", "Amount (Rs.)", "Action"});
     tblCurrentBillSummary->verticalHeader()->setVisible(false);
     tblCurrentBillSummary->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tblCurrentBillSummary->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -855,12 +908,19 @@ void ReceptionistWindow::setupBillingPage()
     sumHeader->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     sumHeader->setSectionResizeMode(1, QHeaderView::Stretch);
     sumHeader->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    sumHeader->setSectionResizeMode(3, QHeaderView::Fixed);
+    tblCurrentBillSummary->setColumnWidth(3, 100);
     tblCurrentBillSummary->setStyleSheet(
         "QTableWidget { border: none; gridline-color: #F1F5F9; font-size: 12px; color: #0F172A; }"
         "QHeaderView::section { background-color: #F8FAFC; color: #475569; font-weight: bold; border: none; padding: 8px; }"
         );
     summaryLayout->addWidget(tblCurrentBillSummary);
 
+    // NEW: running total of all line items
+    lblBillTotal = new QLabel("Total: Rs. 0.00", summaryFrame);
+    lblBillTotal->setStyleSheet("color: #0F172A; font-size: 14px; font-weight: bold; border: none; background: transparent;");
+    lblBillTotal->setAlignment(Qt::AlignRight);
+    summaryLayout->addWidget(lblBillTotal);
     topRow->addWidget(lookupFrame, 1);
     topRow->addWidget(summaryFrame, 1);
     pageLayout->addLayout(topRow);
@@ -1129,6 +1189,9 @@ void ReceptionistWindow::setupBillingPage()
 // NEW: looks up a patient by ID or (partial) name, fills the info box, and
 // loads their most recent unpaid bill (if any) into the Current Bill
 // Summary table so the receptionist can collect payment or start a new bill.
+// UPDATED: looks up a patient, and either (a) loads their existing unpaid
+// bill read-only for payment, or (b) clears pendingBillItems so the
+// receptionist can start building a fresh multi-item bill via Add Item.
 void ReceptionistWindow::onSearchBillingPatientClicked()
 {
     if (!txtBillSearch || !patientMgr) return;
@@ -1165,44 +1228,145 @@ void ReceptionistWindow::onSearchBillingPatientClicked()
 
     currentLookupPatientId = found.id;
     currentGeneratedBillId.clear();
+    pendingBillItems.clear();
 
     if (lblBillPatientId) lblBillPatientId->setText("Patient ID: " + found.id);
     if (lblBillPatientName) lblBillPatientName->setText("Name: " + found.name);
     if (lblBillPatientAge) lblBillPatientAge->setText("Age: " + found.age);
     if (lblBillPatientGender) lblBillPatientGender->setText("Gender: " + found.gender);
 
-    if (tblCurrentBillSummary) tblCurrentBillSummary->setRowCount(0);
     if (spnAmountToPay) spnAmountToPay->setValue(0.0);
 
     // Load the patient's most recent unpaid bill, if one exists
+    bool hasUnpaidBill = false;
     if (billingMgr) {
         billingMgr->reload();
         const auto bills = billingMgr->getAllBills();
         for (const BillingRecord &b : bills) {
             if (b.patientId.compare(found.id, Qt::CaseInsensitive) == 0 && b.remainingBalance > 0.001) {
                 currentGeneratedBillId = b.billId;
-
-                if (tblCurrentBillSummary) {
-                    int row = 0;
-                    for (const BillItem &item : b.items) {
-                        tblCurrentBillSummary->insertRow(row);
-                        tblCurrentBillSummary->setItem(row, 0, new QTableWidgetItem(item.serviceCode));
-                        tblCurrentBillSummary->setItem(row, 1, new QTableWidgetItem(item.description));
-                        tblCurrentBillSummary->setItem(row, 2, new QTableWidgetItem(QString::number(item.amount, 'f', 2)));
-                        row++;
-                    }
-                }
-
+                hasUnpaidBill = true;
+                pendingBillItems = b.items; // display-only mirror of the saved bill
                 if (spnAmountToPay) spnAmountToPay->setValue(b.remainingBalance);
                 break;
             }
         }
     }
 
-    if (btnGenerateBill) btnGenerateBill->setEnabled(true);
-    if (btnProcessPayment) btnProcessPayment->setEnabled(!currentGeneratedBillId.isEmpty());
-}
+    refreshBillSummaryTable();
 
+    // Adding new line items only makes sense while building a fresh bill.
+    // If an unpaid bill already exists, lock those controls — only
+    // Process Payment should be used against it.
+    if (cmbBillItemService) cmbBillItemService->setEnabled(!hasUnpaidBill);
+    if (txtBillItemDesc)   txtBillItemDesc->setEnabled(!hasUnpaidBill);
+    if (spnBillItemAmount) spnBillItemAmount->setEnabled(!hasUnpaidBill);
+    if (btnAddBillItem)    btnAddBillItem->setEnabled(!hasUnpaidBill);
+
+    if (btnProcessPayment) btnProcessPayment->setEnabled(hasUnpaidBill);
+    // btnGenerateBill's enabled state is handled inside refreshBillSummaryTable()
+}
+// NEW: adds one line item (e.g. Lab Bill, Consultation, Room Charge) to
+// the bill currently being assembled for the looked-up patient.
+void ReceptionistWindow::onAddBillItemClicked()
+{
+    if (currentLookupPatientId.isEmpty()) {
+        QMessageBox::warning(this, "Notice", "Please search for a patient first.");
+        return;
+    }
+    if (!currentGeneratedBillId.isEmpty()) {
+        QMessageBox::information(this, "Notice",
+                                 "This patient already has an unpaid bill. Process that payment first, or search again to start a new bill.");
+        return;
+    }
+
+    QString desc = txtBillItemDesc ? txtBillItemDesc->text().trimmed() : "";
+    double amount = spnBillItemAmount ? spnBillItemAmount->value() : 0.0;
+
+    if (desc.isEmpty()) {
+        QMessageBox::warning(this, "Validation Error", "Please enter a description for this item.");
+        return;
+    }
+    if (amount <= 0.0) {
+        QMessageBox::warning(this, "Validation Error", "Item amount must be greater than 0.");
+        return;
+    }
+
+    BillItem item;
+    item.serviceCode = cmbBillItemService ? cmbBillItemService->currentText() : "Other";
+    item.description = desc;
+    item.amount = amount;
+    pendingBillItems.append(item);
+
+    if (txtBillItemDesc) txtBillItemDesc->clear();
+    if (spnBillItemAmount) spnBillItemAmount->setValue(0.0);
+
+    refreshBillSummaryTable();
+}
+// NEW: redraws the Current Bill Summary table from pendingBillItems, each
+// row with a Remove button (unless an existing saved bill is loaded
+// read-only), keeps the running Total label in sync, and keeps Amount to
+// Pay synced to the item total while a NEW bill is being built.
+void ReceptionistWindow::refreshBillSummaryTable()
+{
+    if (!tblCurrentBillSummary) return;
+
+    bool locked = !currentGeneratedBillId.isEmpty(); // true = showing an already-saved bill
+
+    tblCurrentBillSummary->setRowCount(0);
+    double total = 0.0;
+
+    for (int i = 0; i < pendingBillItems.size(); ++i) {
+        const BillItem &item = pendingBillItems[i];
+        total += item.amount;
+
+        tblCurrentBillSummary->insertRow(i);
+        tblCurrentBillSummary->setItem(i, 0, new QTableWidgetItem(item.serviceCode));
+        tblCurrentBillSummary->setItem(i, 1, new QTableWidgetItem(item.description));
+        tblCurrentBillSummary->setItem(i, 2, new QTableWidgetItem(QString::number(item.amount, 'f', 2)));
+
+        if (locked) {
+            QTableWidgetItem *lockedItem = new QTableWidgetItem("Billed");
+            lockedItem->setTextAlignment(Qt::AlignCenter);
+            lockedItem->setForeground(QColor(0x94A3B8));
+            tblCurrentBillSummary->setItem(i, 3, lockedItem);
+        } else {
+            QWidget *actionWidget = new QWidget();
+            QHBoxLayout *actionLayout = new QHBoxLayout(actionWidget);
+            actionLayout->setContentsMargins(0, 0, 0, 0);
+            actionLayout->setAlignment(Qt::AlignCenter);
+
+            QPushButton *btnRemove = new QPushButton("✕ Remove", actionWidget);
+            btnRemove->setStyleSheet(
+                "QPushButton { background-color: #FEE2E2; color: #DC2626; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold; } "
+                "QPushButton:hover { background-color: #FCA5A5; }"
+                );
+
+            int rowIndex = i;
+            connect(btnRemove, &QPushButton::clicked, this, [this, rowIndex]() {
+                if (rowIndex >= 0 && rowIndex < pendingBillItems.size()) {
+                    pendingBillItems.removeAt(rowIndex);
+                    refreshBillSummaryTable();
+                }
+            });
+
+            actionLayout->addWidget(btnRemove);
+            tblCurrentBillSummary->setCellWidget(i, 3, actionWidget);
+        }
+    }
+
+    if (lblBillTotal) {
+        lblBillTotal->setText(QString("Total: Rs. %1").arg(total, 0, 'f', 2));
+    }
+
+    if (!locked && spnAmountToPay) {
+        spnAmountToPay->setValue(total);
+    }
+
+    if (btnGenerateBill) {
+        btnGenerateBill->setEnabled(!locked && !currentLookupPatientId.isEmpty() && !pendingBillItems.isEmpty());
+    }
+}
 // NEW: switches the stacked widget page based on the selected payment
 // mode, so only the fields relevant to Cash / Card / Online / Insurance
 // are shown to the receptionist.
@@ -1234,6 +1398,8 @@ void ReceptionistWindow::updateChangeDue()
 // NEW: creates a bill for the looked-up patient using the Amount to Pay /
 // Discount / Notes fields, mirroring what the old dropdown-driven
 // "Generate Invoice" flow used to do, but sourced from the new layout.
+// UPDATED: now bills ALL items added via Add Item (Lab Bill, Consultation,
+// Room Charge, etc.) instead of a single hardcoded "SVC" line.
 void ReceptionistWindow::onGenerateBillClicked()
 {
     if (currentLookupPatientId.isEmpty()) {
@@ -1242,26 +1408,15 @@ void ReceptionistWindow::onGenerateBillClicked()
     }
     if (!billingMgr) return;
 
-    double amount = spnAmountToPay ? spnAmountToPay->value() : 0.0;
-    double discount = spnDiscount ? spnDiscount->value() : 0.0;
-
-    if (amount <= 0.0) {
-        QMessageBox::warning(this, "Validation Error", "Amount to Pay must be greater than 0.");
+    if (pendingBillItems.isEmpty()) {
+        QMessageBox::warning(this, "Validation Error",
+                             "Add at least one bill item (e.g. Consultation, Lab Test) before generating the bill.");
         return;
     }
 
-    QString desc = txtBillNotes && !txtBillNotes->toPlainText().trimmed().isEmpty()
-                       ? txtBillNotes->toPlainText().trimmed()
-                       : "General Services";
+    double discount = spnDiscount ? spnDiscount->value() : 0.0;
 
-    BillItem item;
-    item.serviceCode = "SVC";
-    item.description = desc;
-    item.amount = amount;
-
-    QVector<BillItem> items = { item };
-
-    QString billId = billingMgr->generateBill(currentLookupPatientId, items, discount, 0.0,
+    QString billId = billingMgr->generateBill(currentLookupPatientId, pendingBillItems, discount, 0.0,
                                               "Generated via Receptionist Dashboard");
 
     if (billId.isEmpty()) {
@@ -1271,8 +1426,6 @@ void ReceptionistWindow::onGenerateBillClicked()
 
     currentGeneratedBillId = billId;
 
-    // If paying by insurance and a covered amount was entered, record it
-    // as an immediate partial payment against the new bill.
     if (radInsurance && radInsurance->isChecked() && spnCoveredAmount && spnCoveredAmount->value() > 0.0) {
         QString insNote = QString("Insurance: %1 | Policy: %2 | Pre-Auth: %3")
         .arg(cmbInsuranceProvider ? cmbInsuranceProvider->currentText() : "",

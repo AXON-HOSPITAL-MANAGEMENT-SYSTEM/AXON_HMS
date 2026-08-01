@@ -26,7 +26,7 @@ class ReceptionistWindow : public QWidget
 {
     Q_OBJECT
 public:
-    explicit ReceptionistWindow(QWidget *parent = nullptr);
+    explicit ReceptionistWindow(const QString &receptionistName = QString(), QWidget *parent = nullptr);
     ~ReceptionistWindow();
 private slots:
     void onDashboardClicked();
@@ -42,6 +42,7 @@ private slots:
     void onClearScheduleFormClicked();
     // Billing Handlers
     void onSearchBillingPatientClicked();   // NEW: looks up patient + loads their open bill
+    void onAddBillItemClicked();            // NEW: adds a line item (Lab Bill, etc.) to the current bill
     void onPaymentModeChanged();            // NEW: switches the stacked widget page
     void updateChangeDue();                 // NEW: recomputes Change Due on the Cash page
     void onGenerateBillClicked();           // NEW: replaces onCreateInvoiceClicked()
@@ -50,6 +51,8 @@ private slots:
     void updateDateTime();
 private:
     Ui::ReceptionistWindow *ui;
+    // Currently logged-in receptionist's display name
+    QString currentReceptionistName;
     // Backend Managers
     PatientManager     *patientMgr{nullptr};
     StaffManager       *staffMgr{nullptr};
@@ -79,6 +82,16 @@ private:
     QLabel      *lblBillPatientGender{nullptr};
     // UI Controls: Billing Page — Current Bill Summary
     QTableWidget *tblCurrentBillSummary{nullptr};
+    // NEW: mini "Add Line Item" form (lets receptionist add Lab Bill,
+    // Consultation, Room Charge, etc. as separate charges on one bill)
+    QComboBox      *cmbBillItemService{nullptr};
+    QLineEdit      *txtBillItemDesc{nullptr};
+    QDoubleSpinBox *spnBillItemAmount{nullptr};
+    QPushButton    *btnAddBillItem{nullptr};
+    QLabel         *lblBillTotal{nullptr};
+    // Holds the line items being assembled for a NEW bill (or, read-only,
+    // an already-generated unpaid bill's items when one is loaded)
+    QVector<BillItem> pendingBillItems;
     // UI Controls: Billing Page — Payment Details
     QRadioButton  *radCash{nullptr};
     QRadioButton  *radCard{nullptr};
@@ -128,6 +141,7 @@ private:
     // Refresh & Helper Functions
     void refreshDashboardStats();
     void refreshScheduleTable();
+    void refreshBillSummaryTable();   // NEW: redraws the Current Bill Summary table + total from pendingBillItems
     void populatePatientDropdowns();
     void populateDoctorDropdowns();   // NEW: pulls real doctor names from StaffManager
     void updateSidebarSelection(QPushButton *activeBtn);
