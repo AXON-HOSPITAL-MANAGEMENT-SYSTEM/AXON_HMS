@@ -453,7 +453,7 @@ void doctorwindow::populatePatientList()
         "   padding: 2px;"
         "}"
         "QListWidget::item {"
-        "   padding: 4px 8px;"
+        "   padding: 2px 8px;"
         "   border-bottom: 1px solid #f1f5f9;"
         "}"
         "QListWidget::item:hover {"
@@ -470,16 +470,26 @@ void doctorwindow::populatePatientList()
 
         QWidget *itemWidget = new QWidget();
         QHBoxLayout *itemLayout = new QHBoxLayout(itemWidget);
-        itemLayout->setContentsMargins(4, 2, 4, 2);  // Minimal padding
+        itemLayout->setContentsMargins(4, 2, 4, 2);
         itemLayout->setSpacing(8);
 
-        QString diagnosisText = p.diagnosisTreatment.isEmpty() ? "No diagnosis" : p.diagnosisTreatment;
+        // ===== FIX: Truncate long diagnosis text =====
+        QString diagnosisText = p.diagnosisTreatment;
+        diagnosisText.replace("Diagnosis:", "");
+        diagnosisText.replace("Treatment:", "");
+        diagnosisText.replace("Rx:", "");
+        diagnosisText = diagnosisText.simplified();
+
+        if (diagnosisText.length() > 25) {
+            diagnosisText = diagnosisText.left(22) + "...";
+        }
 
         QString displayText = QString("%1 — %2")
                                   .arg(p.name)
                                   .arg(diagnosisText);
 
         QLabel *infoLabel = new QLabel(displayText);
+        infoLabel->setToolTip(p.diagnosisTreatment);  // Full text on hover
         infoLabel->setStyleSheet(
             "font-size: 12px;"
             "font-weight: 500;"
@@ -492,7 +502,7 @@ void doctorwindow::populatePatientList()
         statusLabel->setStyleSheet(
             "font-weight: bold;"
             "font-size: 10px;"
-            "padding: 2px 10px;"
+            "padding: 2px 8px;"
             "border: none;"
             "background-color: #e8f0fe;"
             "color: #1a4f8a;"
@@ -500,6 +510,29 @@ void doctorwindow::populatePatientList()
             );
         statusLabel->setFixedWidth(90);
         statusLabel->setFixedHeight(22);
+
+        // Color coding for status
+        if (p.status.trimmed().compare("Discharged", Qt::CaseInsensitive) == 0) {
+            statusLabel->setStyleSheet(
+                "font-weight: bold;"
+                "font-size: 10px;"
+                "padding: 2px 8px;"
+                "border: none;"
+                "background-color: #eafaf1;"
+                "color: #1e8449;"
+                "border-radius: 10px;"
+                );
+        } else if (p.status.trimmed().compare("Admitted", Qt::CaseInsensitive) == 0) {
+            statusLabel->setStyleSheet(
+                "font-weight: bold;"
+                "font-size: 10px;"
+                "padding: 2px 8px;"
+                "border: none;"
+                "background-color: #fef9e7;"
+                "color: #b7950b;"
+                "border-radius: 10px;"
+                );
+        }
 
         QPushButton *viewBtn = new QPushButton("View");
         viewBtn->setObjectName("viewBtn");
@@ -1127,7 +1160,21 @@ void doctorwindow::addPatientRowWithTreat(const Patient &p)
     QLabel *lblName     = new QLabel(p.name);
     QLabel *lblAge      = new QLabel(p.age);
     QLabel *lblGender   = new QLabel(p.gender);
-    QLabel *lblProblem  = new QLabel(p.diagnosisTreatment);
+
+    // ===== FIX: Truncate long diagnosis text =====
+    QString diagnosisText = p.diagnosisTreatment;
+    diagnosisText.replace("Diagnosis:", "");
+    diagnosisText.replace("Treatment:", "");
+    diagnosisText.replace("Rx:", "");
+    diagnosisText = diagnosisText.simplified();
+
+    if (diagnosisText.length() > 30) {
+        diagnosisText = diagnosisText.left(27) + "...";
+    }
+
+    QLabel *lblProblem  = new QLabel(diagnosisText);
+    lblProblem->setToolTip(p.diagnosisTreatment);  // Full text on hover
+
     QLabel *lblStatus   = new QLabel();
 
     lblId->setStyleSheet("font-weight:bold;color:#64748b;" + kPlainLabelD);
@@ -1157,7 +1204,6 @@ void doctorwindow::addPatientRowWithTreat(const Patient &p)
     treatBtn->setFixedHeight(28);
     treatBtn->setFixedWidth(60);
     treatBtn->setCursor(Qt::PointingHandCursor);
-    treatBtn->setProperty("patientId", p.id);
 
     connect(treatBtn, &QPushButton::clicked, this, [this, p]() {
         openTreatmentDialog(p.id);
