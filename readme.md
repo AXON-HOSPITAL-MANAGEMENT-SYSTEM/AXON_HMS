@@ -15,7 +15,7 @@ AXON HMS is a hospital management system built as a 2nd semester academic projec
 | Ankit Sigdel | Team Lead & System Architect |
 | Sudarshan Rijal | UI Designer & Presentation |
 | Pranjal Upadhyay | Database Designer |
-| Princu Thapa | Documentation & Research |
+| Princu Thapa | UI Designer & Documentation |
 
  Supervisor: Er. Bipesh Raj Subedi
 
